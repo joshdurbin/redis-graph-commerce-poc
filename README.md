@@ -16,3 +16,7 @@ Finally, write queries against the graph using Redis Insight:
 ... or use the redis CLI in docker:
 
   `docker run -it --network host --rm redis redis-cli -h 127.0.0.1`
+
+## or, if using the bulk loader
+
+`python bulk_insert.py prodrec -n person.csv -n product.csv -n order.csv -r view.csv -r addtocart.csv -r transact.csv -r contain.csv`
