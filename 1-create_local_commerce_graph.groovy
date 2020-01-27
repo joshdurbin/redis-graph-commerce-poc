@@ -1,5 +1,5 @@
 @Grapes([
-  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0-rc3'),
+  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
   @Grab(group='com.github.javafaker', module='javafaker', version='1.0.1'),
   @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
   @Grab(group='com.google.guava', module='guava', version='28.1-jre')
@@ -28,9 +28,9 @@ def percentageOfAddToCartToPurchase = 15
 def maxRandomTimeFromViewToAddToCartInMinutes = 4320
 def maxRandomTimeFromAddToCartToPurchased = 4320
 def maxPastDate = 365 * 20
-def maxPotentialPeopleToCreate = 1_001
-def minPotentialPeopleToCreate = 1_000
-def maxPotentialProductsToCreate = 1_001
+def maxPotentialPeopleToCreate = 100_000
+def minPotentialPeopleToCreate = 25_000
+def maxPotentialProductsToCreate = 25_000
 def minPotentialProductsToCreate = 1_000
 def nodeCreationBatchSize = 500
 def maxTaxRate =  0.125
@@ -111,6 +111,10 @@ def random = new SplittableRandom()
 def faker = new Faker()
 
 def db = 'prodrec'
+
+graph.query(db, "create index on :person(id)")
+graph.query(db, "create index on :product(id)")
+graph.query(db, "create index on :order(id)")
 
 def now = LocalDateTime.now()
 
