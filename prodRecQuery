@@ -1,0 +1,113 @@
+#!/usr/bin/env groovy
+
+@Grapes([
+  @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
+  @Grab(group='org.apache.commons', module='commons-math3', version='3.6.1'),
+  @Grab(group='redis.clients', module='jedis', version='3.2.0'),
+  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.2'),
+  @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
+  @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
+  @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1')
+])
+
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import groovy.transform.Canonical
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
+import org.apache.commons.math3.stat.descriptive.SummaryStatistics
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig
+import com.redislabs.redisgraph.impl.api.RedisGraph
+import com.redislabs.redisgraph.Statistics.Label
+import me.tongfei.progressbar.ProgressBar
+import oshi.SystemInfo
+import redis.clients.jedis.JedisPool
+
+def defaultGraphDB = 'prodrec'
+def defaultThreadCount = new SystemInfo().hardware.processor.physicalProcessorCount
+
+def cli = new CliBuilder(header: 'RedisGraph Multi-threaded Query Runner', usage:'./prodRecQuery -e <comma delimited environments> <other args>', width: -1)
+cli.db(longOpt: 'database', "The RedisGraph database to use for the query [defaults to ${defaultGraphDB}]", args: 1, defaultValue: defaultGraphDB)
+cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
+cli.h(longOpt: 'help', 'Usage Information')
+
+def cliOptions = cli.parse(args)
+
+if (!cliOptions) {
+  System.exit(-1)
+}
+
+if (cliOptions.help) {
+  cli.usage()
+  System.exit(0)
+}
+
+def redisGraphDB = 'prodrec'
+def threadCount = 6
+def config = new GenericObjectPoolConfig()
+config.setMaxTotal(threadCount)
+
+def jedisPool = new JedisPool(config)
+def redisGraph = new RedisGraph(jedisPool)
+
+def personIdsToOrderCounts = redisGraph.query(redisGraphDB, "match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit 1000")
+def personIds = personIdsToOrderCounts.collect {
+  it.values.first() as Integer
+}
+
+def queue = new LinkedBlockingQueue(threadCount * 5)
+def latch = new CountDownLatch(threadCount)
+
+@Canonical class RecommendedProducts {
+
+  def personId
+  def products
+  def queryTime
+}
+
+@Canonical class Product {
+
+  def id
+  def name
+}
+
+def expectedNumberOfQueueEntries = personIds.size() * threadCount
+
+threadCount.times { number ->
+
+  Thread.start {
+
+    personIds.shuffled().each { personId ->
+
+      def recommendedProductsQuery = redisGraph.query(redisGraphDB, "match (p:person)-[:transact]->(:order)-[:contain]->(:product)<-[:contain]-(:order)-[:contain]->(prd:product) where p.id=${personId} return distinct prd.id, prd.name")
+      def recommendedProducts = recommendedProductsQuery.results.collect {
+        new Product(it.values().first(), it.values().last())
+      }
+
+      def queryTime = recommendedProductsQuery.statistics.getStringValue(Label.QUERY_INTERNAL_EXECUTION_TIME).takeBefore(' ')
+      queue.offer(new RecommendedProducts(personId, recommendedProducts, queryTime))
+    }
+
+    latch.countDown()
+  }
+}
+
+def pb = new ProgressBar("Multi-threaded Product Recommendation Test", expectedNumberOfQueueEntries)
+def counts = new SummaryStatistics()
+def times = new DescriptiveStatistics()
+
+while (latch.count > 0L) {
+
+  def recommendedProducts = queue.poll(1, TimeUnit.SECONDS)
+
+  if (recommendedProducts) {
+
+    counts.addValue(recommendedProducts.products.size() as Integer)
+    times.addValue(recommendedProducts.queryTime as Double)
+    pb.step()
+  }
+}
+
+pb.close()
+
+println "Found a min number of recommended products of ${counts.min as Integer} and a max of ${counts.max as Integer} for ${counts.n} with a query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')}ms"
