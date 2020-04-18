@@ -23,6 +23,9 @@ import me.tongfei.progressbar.ProgressBar
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
 
+// this is a content based product recommendation test where, given a set of person ids, we ask the graph for all products found in the carts
+// of customers who also bought the products they bought
+
 def defaultGraphDB = 'prodrec'
 def defaultThreadCount = new SystemInfo().hardware.processor.physicalProcessorCount
 
