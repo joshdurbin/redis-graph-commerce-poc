@@ -6,6 +6,7 @@
   @Grab(group='redis.clients', module='jedis', version='3.2.0'),
   @Grab(group='com.redislabs', module='jredisgraph', version='2.0.2'),
   @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
+  @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
   @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
   @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1')
 ])
