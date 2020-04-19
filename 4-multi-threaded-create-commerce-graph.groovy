@@ -29,6 +29,7 @@ import com.google.common.base.Stopwatch
 import com.redislabs.redisgraph.impl.api.RedisGraph
 import org.apache.commons.lang3.RandomStringUtils
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
+import oshi.SystemInfo
 
 def maxPotentialViews = 50
 def minPotentialViews = 0
@@ -37,10 +38,10 @@ def percentageOfAddToCartToPurchase = 90
 def maxRandomTimeFromViewToAddToCartInMinutes = 4320
 def maxRandomTimeFromAddToCartToPurchased = 4320
 def maxPastDate = 365 * 20
-def maxPotentialPeopleToCreate = 5_001
-def minPotentialPeopleToCreate = 5_000
-def maxPotentialProductsToCreate = 1_001
-def minPotentialProductsToCreate = 1_000
+def maxPotentialPeopleToCreate = 25_001
+def minPotentialPeopleToCreate = 25_000
+def maxPotentialProductsToCreate = 5_001
+def minPotentialProductsToCreate = 5_000
 def nodeCreationBatchSize = 500
 def maxTaxRate =  0.125
 def minTaxRate = 0.0
@@ -113,7 +114,7 @@ def faker = new Faker()
 
 def db = 'prodrec'
 
-def threadCount = 6
+def threadCount = new SystemInfo().hardware.processor.physicalProcessorCount
 def config = new GenericObjectPoolConfig()
 config.setMaxTotal(threadCount)
 
