@@ -14,8 +14,10 @@ import groovy.lang.Singleton
 import groovy.transform.Canonical
 import redis.clients.jedis.JedisPool
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.SplittableRandom
 import java.time.temporal.ChronoUnit
@@ -34,14 +36,14 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 def maxPotentialViews = 50
 def minPotentialViews = 0
 def percentageOfViewsToAddToCart = 25
-def percentageOfAddToCartToPurchase = 15
+def percentageOfAddToCartToPurchase = 90
 def maxRandomTimeFromViewToAddToCartInMinutes = 4320
 def maxRandomTimeFromAddToCartToPurchased = 4320
 def maxPastDate = 365 * 20
-def maxPotentialPeopleToCreate = 5001
-def minPotentialPeopleToCreate = 5000
-def maxPotentialProductsToCreate = 1001
-def minPotentialProductsToCreate = 1000
+def maxPotentialPeopleToCreate = 100_001
+def minPotentialPeopleToCreate = 100_000
+def maxPotentialProductsToCreate = 25_001
+def minPotentialProductsToCreate = 25_000
 def nodeCreationBatchSize = 500
 def maxTaxRate =  0.125
 def minTaxRate = 0.0
@@ -127,42 +129,61 @@ graph.query(db, "create index on :order(id)")
 
 def now = LocalDateTime.now()
 
-def people = []
-random.nextInt(minPotentialPeopleToCreate, maxPotentialPeopleToCreate).times { num ->
+def personAndProductBatchedInsertQueue = new ConcurrentLinkedQueue()
+
+def personAndProductLatch = new CountDownLatch(threadCount)
+
+def queue = new ConcurrentLinkedQueue()
+def peopleToCreate = random.nextInt(minPotentialPeopleToCreate, maxPotentialPeopleToCreate)
+def productsToCreate = random.nextInt(minPotentialProductsToCreate, maxPotentialProductsToCreate)
+def generationDone = new AtomicBoolean(false)
+def createCount = new AtomicInteger(0)
+
+threadCount.times {
+
+  Thread.start {
+
+    while (personAndProductLatch.count > 0L) {
+
+      def query = personAndProductBatchedInsertQueue.poll()
+      if (query) {
+        graph.query(db, query)
+        createCount.getAndIncrement()
+      } else if (generationDone.get()) {
+        personAndProductLatch.countDown()
+      }
+    }
+  }
+}
+
+Thread.start {
+
+  def pb = new ProgressBar("Person and product node creation progress", peopleToCreate + productsToCreate)
+
+  while (createCount.get() != peopleToCreate + productsToCreate) {
+    pb.stepTo(createCount.get())
+  }
+
+  pb.close()
+}
+
+def peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges = new ConcurrentLinkedQueue()
+peopleToCreate.times { num ->
   def address = faker.address()
-  people << new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
+  def person = new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
+  personAndProductBatchedInsertQueue.offer("CREATE ${person.toCypherCreate()}")
+  peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.offer(person)
 }
 
-// insert people nodes
-def batchedPeople = people.collate(nodeCreationBatchSize)
-def batchedPeopleInsertionThreadLatch = new CountDownLatch(batchedPeople.size())
-batchedPeople.each { batch ->
-  Thread.start {
-    graph.query(db, "CREATE ${batch.collect { person -> person.toCypherCreate()}.join(',')}")
-  }
-  batchedPeopleInsertionThreadLatch.countDown()
+def products = new ArrayList(productsToCreate)
+productsToCreate.times { num ->
+  def product = new Product(id: num, name: faker.commerce().productName(), manufacturer: faker.company().name(), msrp: faker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
+  products << product
+  personAndProductBatchedInsertQueue.offer("CREATE ${product.toCypherCreate()}")
 }
 
-def products = []
-random.nextInt(minPotentialProductsToCreate, maxPotentialProductsToCreate).times { num ->
-  products << new Product(id: num, name: faker.commerce().productName(), manufacturer: faker.company().name(), msrp: faker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
-}
-
-def batchedProducts = products.collate(nodeCreationBatchSize)
-def batchedProductsInsertionThreadLatch = new CountDownLatch(batchedProducts.size())
-batchedProducts.each { batch ->
-  Thread.start {
-    graph.query(db, "CREATE ${batch.collect { person -> person.toCypherCreate()}.join(',')}")
-    batchedProductsInsertionThreadLatch.countDown()
-  }
-}
-
-// create this unbounded queue as it might take a second at a large size
-def queue = new ConcurrentLinkedQueue(people)
-
-// gate here wait for all people and product records to be inserted
-batchedPeopleInsertionThreadLatch.await()
-batchedProductsInsertionThreadLatch.await()
+generationDone.set(true)
+personAndProductLatch.await()
 
 def edgeAndOrderGenerationLatch = new CountDownLatch(threadCount)
 
@@ -172,9 +193,9 @@ threadCount.times {
 
     def threadRandom = new SplittableRandom()
 
-    while (!queue.empty) {
+    while (!peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.empty) {
 
-      def person = queue.poll()
+      def person = peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.poll()
 
       def views = threadRandom.nextInt(minPotentialViews, maxPotentialViews)
       def viewedProducts = [] as Set
@@ -239,9 +260,9 @@ threadCount.times {
                 "(o)-[:contain]->(prd${product.id})"
               }.join(', ')
 
-              def thing = "MATCH (p:${GraphKeys.instance.personNodeType}), (o:${GraphKeys.instance.orderNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND o.id=${order.id} AND ${productMatchCriteria} CREATE (p)-[:${GraphKeys.instance.transactEdgeType}]->(o), ${productEdges}"
+              def query = "MATCH (p:${GraphKeys.instance.personNodeType}), (o:${GraphKeys.instance.orderNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND o.id=${order.id} AND ${productMatchCriteria} CREATE (p)-[:${GraphKeys.instance.transactEdgeType}]->(o), ${productEdges}"
 
-              graph.query(db, thing)
+              graph.query(db, query)
             }
           }
         }
@@ -269,10 +290,10 @@ threadCount.times {
   }
 }
 
-def pb = new ProgressBar("Order node and edge creation", people.size())
+def pb = new ProgressBar("Person edge and order node progress", peopleToCreate)
 
 while (edgeAndOrderGenerationLatch.count > 0L) {
-  pb.stepTo(people.size() - queue.size())
+  pb.stepTo(peopleToCreate - peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.size())
 }
 
 pb.close()
