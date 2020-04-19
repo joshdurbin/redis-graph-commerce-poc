@@ -12,11 +12,8 @@
 
 import groovy.lang.Singleton
 import groovy.transform.Canonical
-import redis.clients.jedis.JedisPool
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.SplittableRandom
@@ -25,7 +22,7 @@ import java.time.LocalDateTime
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
-
+import redis.clients.jedis.JedisPool
 import me.tongfei.progressbar.ProgressBar
 import com.github.javafaker.Faker
 import com.google.common.base.Stopwatch
@@ -40,10 +37,10 @@ def percentageOfAddToCartToPurchase = 90
 def maxRandomTimeFromViewToAddToCartInMinutes = 4320
 def maxRandomTimeFromAddToCartToPurchased = 4320
 def maxPastDate = 365 * 20
-def maxPotentialPeopleToCreate = 100_001
-def minPotentialPeopleToCreate = 100_000
-def maxPotentialProductsToCreate = 25_001
-def minPotentialProductsToCreate = 25_000
+def maxPotentialPeopleToCreate = 5_001
+def minPotentialPeopleToCreate = 5_000
+def maxPotentialProductsToCreate = 1_001
+def minPotentialProductsToCreate = 1_000
 def nodeCreationBatchSize = 500
 def maxTaxRate =  0.125
 def minTaxRate = 0.0
@@ -158,7 +155,7 @@ threadCount.times {
 
 Thread.start {
 
-  def pb = new ProgressBar("Person and product node creation progress", peopleToCreate + productsToCreate)
+  def pb = new ProgressBar("creating (:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", peopleToCreate + productsToCreate)
 
   while (createCount.get() != peopleToCreate + productsToCreate) {
     pb.stepTo(createCount.get())
@@ -290,7 +287,7 @@ threadCount.times {
   }
 }
 
-def pb = new ProgressBar("Person edge and order node progress", peopleToCreate)
+def pb = new ProgressBar("creating (:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.viewEdgeType}], [:${GraphKeys.instance.addToCartEdgeType}], [:${GraphKeys.instance.transactEdgeType}], and [:${GraphKeys.instance.containEdgeType}]", peopleToCreate)
 
 while (edgeAndOrderGenerationLatch.count > 0L) {
   pb.stepTo(peopleToCreate - peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.size())
