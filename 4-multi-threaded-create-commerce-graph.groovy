@@ -1,3 +1,5 @@
+#!/usr/bin/env groovy
+
 @Grapes([
   @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
   @Grab(group='com.github.javafaker', module='javafaker', version='1.0.1'),
@@ -144,35 +146,24 @@ threadCount.times {
     while (personAndProductLatch.count > 0L) {
 
       def query = personAndProductBatchedInsertQueue.poll()
-      if (query) {
-        graph.query(db, "CREATE ${query.toCypherCreate()}")
-        createCount.getAndIncrement()
-      } else if (generationDone.get()) {
+      def batchCounter = 0
+      def batchedInserts = []
+
+      while (query && batchCounter < nodeCreationBatchSize) {
+        batchedInserts << query
+        batchCounter++
+        query = personAndProductBatchedInsertQueue.poll()
+      }
+
+      if (batchedInserts) {
+        graph.query(db, "CREATE ${batchedInserts.collect { record -> record.toCypherCreate()}.join(',')}")
+        createCount.addAndGet(batchedInserts.size())
+      }
+
+      if (!query && generationDone.get()) {
         personAndProductLatch.countDown()
       }
     }
-
-    // while (personAndProductLatch.count > 0L) {
-    //
-    //   def query = personAndProductBatchedInsertQueue.poll()
-    //   def batchCounter = 0
-    //   def batchedInserts = []
-    //
-    //   while (query && batchCounter < nodeCreationBatchSize) {
-    //     batchedInserts << query
-    //     batchCounter++
-    //     query = personAndProductBatchedInsertQueue.poll()
-    //   }
-    //
-    //   if (batchedInserts) {
-    //     graph.query(db, "CREATE ${batchedInserts.collect { record -> record.toCypherCreate()}.join(',')}")
-    //     createCount.addAndGet(batchedInserts.size())
-    //   }
-    //
-    //   if (!query && generationDone.get()) {
-    //     personAndProductLatch.countDown()
-    //   }
-    // }
   }
 }
 
@@ -191,7 +182,6 @@ peopleToCreate.times { num ->
   def address = faker.address()
   def person = new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
   personAndProductBatchedInsertQueue.offer(person)
-  // personAndProductBatchedInsertQueue.offer("CREATE ${person.toCypherCreate()}")
   peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.offer(person)
 }
 
@@ -200,7 +190,6 @@ productsToCreate.times { num ->
   def product = new Product(id: num, name: faker.commerce().productName(), manufacturer: faker.company().name(), msrp: faker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
   products << product
   personAndProductBatchedInsertQueue.offer(product)
-  // personAndProductBatchedInsertQueue.offer("CREATE ${product.toCypherCreate()}")
 }
 
 generationDone.set(true)
