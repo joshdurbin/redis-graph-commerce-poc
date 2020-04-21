@@ -38,10 +38,10 @@ def percentageOfAddToCartToPurchase = 90
 def maxRandomTimeFromViewToAddToCartInMinutes = 4320
 def maxRandomTimeFromAddToCartToPurchased = 4320
 def maxPastDate = 365 * 20
-def maxPotentialPeopleToCreate = 25_001
-def minPotentialPeopleToCreate = 25_000
-def maxPotentialProductsToCreate = 5_001
-def minPotentialProductsToCreate = 5_000
+def maxPotentialPeopleToCreate = 5_001
+def minPotentialPeopleToCreate = 5_000
+def maxPotentialProductsToCreate = 1_001
+def minPotentialProductsToCreate = 1_000
 def nodeCreationBatchSize = 500
 def maxTaxRate =  0.125
 def minTaxRate = 0.0
@@ -121,9 +121,9 @@ config.setMaxTotal(threadCount)
 def jedisPool = new JedisPool(config)
 def graph = new RedisGraph(jedisPool)
 
-graph.query(db, "create index on :person(id)")
-graph.query(db, "create index on :product(id)")
-graph.query(db, "create index on :order(id)")
+graph.query(db, 'create index on :person(id)')
+graph.query(db, 'create index on :product(id)')
+graph.query(db, 'create index on :order(id)')
 
 def now = LocalDateTime.now()
 
@@ -145,31 +145,53 @@ threadCount.times {
 
       def query = personAndProductBatchedInsertQueue.poll()
       if (query) {
-        graph.query(db, query)
+        graph.query(db, "CREATE ${query.toCypherCreate()}")
         createCount.getAndIncrement()
       } else if (generationDone.get()) {
         personAndProductLatch.countDown()
       }
     }
+
+    // while (personAndProductLatch.count > 0L) {
+    //
+    //   def query = personAndProductBatchedInsertQueue.poll()
+    //   def batchCounter = 0
+    //   def batchedInserts = []
+    //
+    //   while (query && batchCounter < nodeCreationBatchSize) {
+    //     batchedInserts << query
+    //     batchCounter++
+    //     query = personAndProductBatchedInsertQueue.poll()
+    //   }
+    //
+    //   if (batchedInserts) {
+    //     graph.query(db, "CREATE ${batchedInserts.collect { record -> record.toCypherCreate()}.join(',')}")
+    //     createCount.addAndGet(batchedInserts.size())
+    //   }
+    //
+    //   if (!query && generationDone.get()) {
+    //     personAndProductLatch.countDown()
+    //   }
+    // }
   }
 }
 
 Thread.start {
 
-  def pb = new ProgressBar("creating (:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", peopleToCreate + productsToCreate)
+  new ProgressBar("(:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", peopleToCreate + productsToCreate, 200).withCloseable { progressBar ->
 
-  while (createCount.get() != peopleToCreate + productsToCreate) {
-    pb.stepTo(createCount.get())
+    while (createCount.get() != peopleToCreate + productsToCreate) {
+      progressBar.stepTo(createCount.get())
+    }
   }
-
-  pb.close()
 }
 
 def peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges = new ConcurrentLinkedQueue()
 peopleToCreate.times { num ->
   def address = faker.address()
   def person = new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
-  personAndProductBatchedInsertQueue.offer("CREATE ${person.toCypherCreate()}")
+  personAndProductBatchedInsertQueue.offer(person)
+  // personAndProductBatchedInsertQueue.offer("CREATE ${person.toCypherCreate()}")
   peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.offer(person)
 }
 
@@ -177,7 +199,8 @@ def products = new ArrayList(productsToCreate)
 productsToCreate.times { num ->
   def product = new Product(id: num, name: faker.commerce().productName(), manufacturer: faker.company().name(), msrp: faker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
   products << product
-  personAndProductBatchedInsertQueue.offer("CREATE ${product.toCypherCreate()}")
+  personAndProductBatchedInsertQueue.offer(product)
+  // personAndProductBatchedInsertQueue.offer("CREATE ${product.toCypherCreate()}")
 }
 
 generationDone.set(true)
@@ -288,10 +311,9 @@ threadCount.times {
   }
 }
 
-def pb = new ProgressBar("creating (:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.viewEdgeType}], [:${GraphKeys.instance.addToCartEdgeType}], [:${GraphKeys.instance.transactEdgeType}], and [:${GraphKeys.instance.containEdgeType}]", peopleToCreate)
+new ProgressBar("(:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.viewEdgeType}], [:${GraphKeys.instance.addToCartEdgeType}], [:${GraphKeys.instance.transactEdgeType}], and [:${GraphKeys.instance.containEdgeType}]", peopleToCreate, 200).withCloseable { progressBar ->
 
-while (edgeAndOrderGenerationLatch.count > 0L) {
-  pb.stepTo(peopleToCreate - peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.size())
+  while (edgeAndOrderGenerationLatch.count > 0L) {
+    progressBar.stepTo(peopleToCreate - peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.size())
+  }
 }
-
-pb.close()
