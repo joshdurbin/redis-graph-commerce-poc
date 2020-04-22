@@ -186,9 +186,9 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 def random = new SplittableRandom()
 def faker = new Faker()
 
-def db = 'prodrec'
+def db = cliOptions.database
 
-def threadCount = new SystemInfo().hardware.processor.physicalProcessorCount
+def threadCount = cliOptions.threadCount as Integer
 def config = new GenericObjectPoolConfig()
 config.setMaxTotal(threadCount)
 
