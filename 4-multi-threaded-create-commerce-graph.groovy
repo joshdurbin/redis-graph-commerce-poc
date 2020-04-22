@@ -33,24 +33,96 @@ import org.apache.commons.lang3.RandomStringUtils
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 
-def maxPotentialViews = 50
-def minPotentialViews = 0
-def percentageOfViewsToAddToCart = 25
-def percentageOfAddToCartToPurchase = 90
-def maxRandomTimeFromViewToAddToCartInMinutes = 4320
-def maxRandomTimeFromAddToCartToPurchased = 4320
-def maxPastDate = 365 * 20
-def maxPotentialPeopleToCreate = 5_001
-def minPotentialPeopleToCreate = 5_000
-def maxPotentialProductsToCreate = 1_001
-def minPotentialProductsToCreate = 1_000
-def nodeCreationBatchSize = 500
-def maxTaxRate =  0.125
-def minTaxRate = 0.0
-def maxShipRate = 0.15
-def minShipRate = 0.0
-def minPerProductPrice = 0.99
-def maxPerProductPrice = 1000.00
+def defaultDB = 'prodrec'
+def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
+def defaultMaxPotentialViews = '50'
+def defaultMinPotentialViews = '0'
+def defaultPercentageOfViewsToAddToCart = '25'
+def defaultPercentageOfAddToCartToPurchase = '90'
+def defaultMaxRandomTimeFromViewToAddToCartInMinutes = '4320'
+def defaultMaxRandomTimeFromAddToCartToPurchased = '4320'
+def defaultMaxPastDate = "${365 * 20}"
+def defaultMaxPotentialPeopleToCreate = '5001'
+def defaultMinPotentialPeopleToCreate = '5000'
+def defaultMaxPotentialProductsToCreate = '1001'
+def defaultMinPotentialProductsToCreate = '1000'
+def defaultNodeCreationBatchSize = '500'
+def defaultMaxTaxRate = '0.125'
+def defaultMinTaxRate = '0.0'
+def defaultMaxShipRate = '0.15'
+def defaultMinShipRate = '0.0'
+def defaultMaxPerProductPrice = '1000.00'
+def defaultMinPerProductPrice = '0.99'
+
+def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'./generateCommerceGraph', width: -1)
+cli.maxv(longOpt: 'maxPotentialViews', "The max number of potential views a person can have against a product [defaults to ${defaultMaxPotentialViews}]", args: 1, defaultValue: defaultMaxPotentialViews)
+cli.minv(longOpt: 'minPotentialViews', "The min number of potential views a person can have against a product [defaults to ${defaultMinPotentialViews}]", args: 1, defaultValue: defaultMinPotentialViews)
+cli.peratc(longOpt: 'percentageOfViewsToAddToCart', "The percentage of views to turn into add-to-cart events for a given person and product [defaults to ${defaultPercentageOfViewsToAddToCart}]", args: 1, defaultValue: defaultPercentageOfViewsToAddToCart)
+cli.perpur(longOpt: 'percentageOfAddToCartToPurchase', "The percentage of add-to-cart into purchase events for a given person and product [defaults to ${defaultPercentageOfAddToCartToPurchase}]", args: 1, defaultValue: defaultPercentageOfAddToCartToPurchase)
+cli.maxatct(longOpt: 'maxRandomTimeFromViewToAddToCartInMinutes', "The max random time from view to add-to-cart for a given user and product [defaults to ${defaultMaxRandomTimeFromViewToAddToCartInMinutes}]", args: 1, defaultValue: defaultMaxRandomTimeFromViewToAddToCartInMinutes)
+cli.maxpurt(longOpt: 'maxRandomTimeFromAddToCartToPurchased', "The max random time from add-to-cart to purchased for a given user and product[defaults to ${defaultMaxRandomTimeFromAddToCartToPurchased}]", args: 1, defaultValue: defaultMaxRandomTimeFromAddToCartToPurchased)
+cli.maxpd(longOpt: 'maxPastDate', "The max date in the past for the memberSince field of a given user [defaults to ${defaultMaxPastDate}]", args: 1, defaultValue: defaultMaxPastDate)
+cli.maxpeeps(longOpt: 'maxPotentialPeopleToCreate', "The max number of people to create [defaults to ${defaultMaxPotentialPeopleToCreate}]", args: 1, defaultValue: defaultMaxPotentialPeopleToCreate)
+cli.minpeeps(longOpt: 'minPotentialPeopleToCreate', "The min number of people to create [defaults to ${defaultMinPotentialPeopleToCreate}]", args: 1, defaultValue: defaultMinPotentialPeopleToCreate)
+cli.maxprods(longOpt: 'maxPotentialProductsToCreate', "The max number of people to create [defaults to ${defaultMaxPotentialProductsToCreate}]", args: 1, defaultValue: defaultMaxPotentialProductsToCreate)
+cli.minprods(longOpt: 'minPotentialProductsToCreate', "The min number of people to create [defaults to ${defaultMinPotentialProductsToCreate}]", args: 1, defaultValue: defaultMinPotentialProductsToCreate)
+cli.ncbs(longOpt: 'nodeCreationBatchSize', "The size of batched writes to use when creating people/products [defaults to ${defaultNodeCreationBatchSize}]", args: 1, defaultValue: defaultNodeCreationBatchSize)
+cli.maxtax(longOpt: 'maxTaxRate', "The max tax rate for an order [defaults to ${defaultMaxTaxRate}]", args: 1, defaultValue: defaultMaxTaxRate)
+cli.mintax(longOpt: 'minTaxRate', "The min tax rate for an order [defaults to ${defaultMinTaxRate}]", args: 1, defaultValue: defaultMinTaxRate)
+cli.maxship(longOpt: 'maxShipRate', "The max ship rate for an order [defaults to ${defaultMaxShipRate}]", args: 1, defaultValue: defaultMaxShipRate)
+cli.minship(longOpt: 'minShipRate', "The min ship rate for an order [defaults to ${defaultMinShipRate}]", args: 1, defaultValue: defaultMinShipRate)
+cli.maxppp(longOpt: 'maxPerProductPrice', "The max price per product [defaults to ${defaultMaxPerProductPrice}]", args: 1, defaultValue: defaultMaxPerProductPrice)
+cli.minppp(longOpt: 'minPerProductPrice', "The min price per product [defaults to ${defaultMinPerProductPrice}]", args: 1, defaultValue: defaultMinPerProductPrice)
+cli.db(longOpt: 'database', "The RedisGraph database to use for our queries, data generation [defaults to ${defaultDB}]", args: 1, defaultValue: defaultDB)
+cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
+cli.h(longOpt: 'help', 'Usage Information')
+
+def cliOptions = cli.parse(args)
+
+if (!cliOptions) {
+  cli.usage()
+  System.exit(-1)
+}
+
+if (cliOptions.help) {
+  cli.usage()
+  System.exit(0)
+}
+
+def printErr = System.err.&println
+
+def validateParams = { variable, min, max ->
+  if (min == max) {
+    printErr("Min and max values must be discrete. Current for ${variable} are ${min} and ${max}")
+    cli.usage()
+    System.exit(-1)
+  }
+}
+
+def maxPotentialViews = cliOptions.maxPotentialViews as Integer
+def minPotentialViews = cliOptions.minPotentialViews as Integer
+validateParams('Potential Views', minPotentialViews, maxPotentialViews)
+def percentageOfViewsToAddToCart = cliOptions.percentageOfViewsToAddToCart as Integer
+def percentageOfAddToCartToPurchase = cliOptions.percentageOfAddToCartToPurchase as Integer
+def maxRandomTimeFromViewToAddToCartInMinutes = cliOptions.maxRandomTimeFromViewToAddToCartInMinutes as Integer
+def maxRandomTimeFromAddToCartToPurchased = cliOptions.maxRandomTimeFromAddToCartToPurchased as Integer
+def maxPastDate = cliOptions.maxPastDate as Integer
+def maxPotentialPeopleToCreate = cliOptions.maxPotentialPeopleToCreate as Integer
+def minPotentialPeopleToCreate = cliOptions.minPotentialPeopleToCreate as Integer
+validateParams('Created People', minPotentialPeopleToCreate, maxPotentialPeopleToCreate)
+def maxPotentialProductsToCreate = cliOptions.maxPotentialProductsToCreate as Integer
+def minPotentialProductsToCreate = cliOptions.minPotentialProductsToCreate as Integer
+validateParams('Created Products', minPotentialProductsToCreate, maxPotentialProductsToCreate)
+def nodeCreationBatchSize = cliOptions.nodeCreationBatchSize as Integer
+def maxTaxRate = cliOptions.maxTaxRate as Double
+def minTaxRate = cliOptions.minTaxRate as Double
+validateParams('Tax Rate', minTaxRate, maxTaxRate)
+def maxShipRate = cliOptions.maxShipRate as Double
+def minShipRate = cliOptions.minShipRate as Double
+validateParams('Ship Rate', minShipRate, maxShipRate)
+def maxPerProductPrice = cliOptions.maxPerProductPrice as Double
+def minPerProductPrice = cliOptions.minPerProductPrice as Double
+validateParams('Product Price', minPerProductPrice, maxPerProductPrice)
 
 @Singleton class GraphKeys {
   def personNodeType = 'person'
@@ -169,11 +241,15 @@ threadCount.times {
 
 Thread.start {
 
-  new ProgressBar("(:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", peopleToCreate + productsToCreate, 200).withCloseable { progressBar ->
+  def targetProgress = peopleToCreate + productsToCreate
 
-    while (createCount.get() != peopleToCreate + productsToCreate) {
+  new ProgressBar("(:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", targetProgress, 200).withCloseable { progressBar ->
+
+    while (personAndProductLatch.count > 0L) {
       progressBar.stepTo(createCount.get())
     }
+
+    progressBar.stepTo(targetProgress)
   }
 }
 
