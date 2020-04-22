@@ -24,13 +24,10 @@ import me.tongfei.progressbar.ProgressBar
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
 
-// this is a content based product recommendation test where, given a set of person ids, we ask the graph for all products found in the carts
-// of customers who also bought the products they bought
-
 def defaultGraphDB = 'prodrec'
-def defaultThreadCount = new SystemInfo().hardware.processor.physicalProcessorCount
+def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
 
-def cli = new CliBuilder(header: 'RedisGraph Multi-threaded Query Runner', usage:'./prodRecQuery -e <comma delimited environments> <other args>', width: -1)
+def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'./prodRecQuery -e <comma delimited environments> <other args>', width: -1)
 cli.db(longOpt: 'database', "The RedisGraph database to use for the query [defaults to ${defaultGraphDB}]", args: 1, defaultValue: defaultGraphDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
 cli.h(longOpt: 'help', 'Usage Information')
@@ -38,6 +35,7 @@ cli.h(longOpt: 'help', 'Usage Information')
 def cliOptions = cli.parse(args)
 
 if (!cliOptions) {
+  cli.usage()
   System.exit(-1)
 }
 
@@ -46,8 +44,8 @@ if (cliOptions.help) {
   System.exit(0)
 }
 
-def redisGraphDB = 'prodrec'
-def threadCount = 6
+def redisGraphDB = cliOptions.db
+def threadCount = cliOptions.tc as Integer
 def config = new GenericObjectPoolConfig()
 config.setMaxTotal(threadCount)
 
@@ -96,22 +94,22 @@ threadCount.times { number ->
   }
 }
 
-def pb = new ProgressBar("Multi-threaded Product Recommendation Test", expectedNumberOfQueueEntries)
 def counts = new SummaryStatistics()
 def times = new DescriptiveStatistics()
 
-while (latch.count > 0L) {
+new ProgressBar('Progress', expectedNumberOfQueueEntries, 200).withCloseable { progressBar ->
 
-  def recommendedProducts = queue.poll(1, TimeUnit.SECONDS)
+  while (latch.count > 0L) {
 
-  if (recommendedProducts) {
+    def recommendedProducts = queue.poll(1, TimeUnit.SECONDS)
 
-    counts.addValue(recommendedProducts.products.size() as Integer)
-    times.addValue(recommendedProducts.queryTime as Double)
-    pb.step()
+    if (recommendedProducts) {
+
+      counts.addValue(recommendedProducts.products.size() as Integer)
+      times.addValue(recommendedProducts.queryTime as Double)
+      progressBar.step()
+    }
   }
 }
 
-pb.close()
-
-println "Found a min number of recommended products of ${counts.min as Integer} and a max of ${counts.max as Integer} for ${counts.n} with a query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')}ms"
+println "Found a min number of recommended products of ${counts.min as Integer}, avg of ${counts.mean as Integer}, and a max of ${counts.max as Integer} for ${counts.n} with a query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')}ms"
