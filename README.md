@@ -76,3 +76,7 @@ This query runner executes two queries;
 
   - One to get the top 1,000 order placing people ids -- `match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit 1000`
   - One to get the products found in the placed orders of other users based on the orders and products for a given user -- `match (p:person)-[:transact]->(:order)-[:contain]->(:product)<-[:contain]-(:order)-[:contain]->(prd:product) where p.id=${personId} return distinct prd.id, prd.name` (with no limits -- BAD)
+
+## Notes
+
+I'm trying to keep things as tidy as possible in these scripts, despite the amount of code, and I'm not catching exceptions for things like, if RedisGraph crashes, becomes overwhelmed, etc...
