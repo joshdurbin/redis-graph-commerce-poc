@@ -2,7 +2,7 @@
 
 @Grapes([
   @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
-  @Grab(group='com.github.javafaker', module='javafaker', version='1.0.1'),
+  @Grab(group='com.github.javamainThreadFaker', module='javamainThreadFaker', version='1.0.1'),
   @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
   @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
   @Grab(group='redis.clients', module='jedis', version='3.2.0'),
@@ -24,15 +24,18 @@ import java.time.LocalDateTime
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
-import redis.clients.jedis.JedisPool
-import me.tongfei.progressbar.ProgressBar
-import com.github.javafaker.Faker
+import com.github.javamainThreadFaker.mainThreadFaker
 import com.google.common.base.Stopwatch
 import com.redislabs.redisgraph.impl.api.RedisGraph
+import me.tongfei.progressbar.ProgressBar
 import org.apache.commons.lang3.RandomStringUtils
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
+import redis.clients.jedis.JedisPool
 
+def progressBarUpdateInterval = 200
+
+// defaults must be strings for CliBuilder
 def defaultDB = 'prodrec'
 def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
 def defaultMaxPotentialViews = '50'
@@ -53,6 +56,8 @@ def defaultMaxShipRate = '0.15'
 def defaultMinShipRate = '0.0'
 def defaultMaxPerProductPrice = '1000.00'
 def defaultMinPerProductPrice = '0.99'
+def defaultRedisHost = 'localhost'
+def defaultRedisPort = '6379'
 
 def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'generateCommerceGraph', width: -1)
 cli.maxv(longOpt: 'maxPotentialViews', "The max number of potential views a person can have against a product [defaults to ${defaultMaxPotentialViews}]", args: 1, defaultValue: defaultMaxPotentialViews)
@@ -75,8 +80,11 @@ cli.maxppp(longOpt: 'maxPerProductPrice', "The max price per product [defaults t
 cli.minppp(longOpt: 'minPerProductPrice', "The min price per product [defaults to ${defaultMinPerProductPrice}]", args: 1, defaultValue: defaultMinPerProductPrice)
 cli.db(longOpt: 'database', "The RedisGraph database to use for our queries, data generation [defaults to ${defaultDB}]", args: 1, defaultValue: defaultDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
+cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${}]", args: 1, defaultValue: defaultRedisHost)
+cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${}]", args: 1, defaultValue: defaultRedisPort)
 cli.h(longOpt: 'help', 'Usage Information')
 
+// parse and validate options
 def cliOptions = cli.parse(args)
 
 if (!cliOptions) {
@@ -91,6 +99,7 @@ if (cliOptions.help) {
 
 def printErr = System.err.&println
 
+// closure for validating min/max are discrete
 def validateParams = { variable, min, max ->
   if (min == max) {
     printErr("Min and max values must be discrete. Current for ${variable} are ${min} and ${max}")
@@ -102,6 +111,7 @@ def validateParams = { variable, min, max ->
 def maxPotentialViews = cliOptions.maxPotentialViews as Integer
 def minPotentialViews = cliOptions.minPotentialViews as Integer
 validateParams('Potential Views', minPotentialViews, maxPotentialViews)
+
 def percentageOfViewsToAddToCart = cliOptions.percentageOfViewsToAddToCart as Integer
 def percentageOfAddToCartToPurchase = cliOptions.percentageOfAddToCartToPurchase as Integer
 def maxRandomTimeFromViewToAddToCartInMinutes = cliOptions.maxRandomTimeFromViewToAddToCartInMinutes as Integer
@@ -110,20 +120,25 @@ def maxPastDate = cliOptions.maxPastDate as Integer
 def maxPotentialPeopleToCreate = cliOptions.maxPotentialPeopleToCreate as Integer
 def minPotentialPeopleToCreate = cliOptions.minPotentialPeopleToCreate as Integer
 validateParams('Created People', minPotentialPeopleToCreate, maxPotentialPeopleToCreate)
+
 def maxPotentialProductsToCreate = cliOptions.maxPotentialProductsToCreate as Integer
 def minPotentialProductsToCreate = cliOptions.minPotentialProductsToCreate as Integer
 validateParams('Created Products', minPotentialProductsToCreate, maxPotentialProductsToCreate)
+
 def nodeCreationBatchSize = cliOptions.nodeCreationBatchSize as Integer
 def maxTaxRate = cliOptions.maxTaxRate as Double
 def minTaxRate = cliOptions.minTaxRate as Double
 validateParams('Tax Rate', minTaxRate, maxTaxRate)
+
 def maxShipRate = cliOptions.maxShipRate as Double
 def minShipRate = cliOptions.minShipRate as Double
 validateParams('Ship Rate', minShipRate, maxShipRate)
+
 def maxPerProductPrice = cliOptions.maxPerProductPrice as Double
 def minPerProductPrice = cliOptions.minPerProductPrice as Double
 validateParams('Product Price', minPerProductPrice, maxPerProductPrice)
 
+// this is used for consistent label/type keys through the generation script
 @Singleton class GraphKeys {
   def personNodeType = 'person'
   def productNodeType = 'product'
@@ -184,26 +199,27 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 }
 
 def random = new SplittableRandom()
-def faker = new Faker()
+def mainThreadFaker = new mainThreadFaker()
 
 def db = cliOptions.database
 
+// setup jedis and graph
 def threadCount = cliOptions.threadCount as Integer
 def config = new GenericObjectPoolConfig()
 config.setMaxTotal(threadCount)
-
-def jedisPool = new JedisPool(config)
+def jedisPool = new JedisPool(config, cliOptions.redisHost, cliOptions.redisPort as Integer)
 def graph = new RedisGraph(jedisPool)
 
-graph.query(db, 'create index on :person(id)')
-graph.query(db, 'create index on :product(id)')
-graph.query(db, 'create index on :order(id)')
+// index creation
+graph.query(db, "create index on :${GraphKeys.instance.personNodeType}(id)")
+graph.query(db, "create index on :${GraphKeys.instance.productNodeType}(id)")
+graph.query(db, "create index on :${GraphKeys.instance.orderNodeType}(id)")
 
 def now = LocalDateTime.now()
 
-def personAndProductBatchedInsertQueue = new ConcurrentLinkedQueue()
-
-def personAndProductLatch = new CountDownLatch(threadCount)
+// people and products have to be first created so we can query on them in a second round for orders and edges
+def personProductQueue = new ConcurrentLinkedQueue()
+def personProductLatch = new CountDownLatch(threadCount)
 
 def queue = new ConcurrentLinkedQueue()
 def peopleToCreate = random.nextInt(minPotentialPeopleToCreate, maxPotentialPeopleToCreate)
@@ -211,20 +227,22 @@ def productsToCreate = random.nextInt(minPotentialProductsToCreate, maxPotential
 def generationDone = new AtomicBoolean(false)
 def createCount = new AtomicInteger(0)
 
+// spin up threads to do the work
 threadCount.times {
 
   Thread.start {
 
-    while (personAndProductLatch.count > 0L) {
+    while (personProductLatch.count > 0L) {
 
-      def query = personAndProductBatchedInsertQueue.poll()
+      def query = personProductQueue.poll()
       def batchCounter = 0
       def batchedInserts = []
 
+      // as redis slows with load we become more efficient at batching nodes created against the graph
       while (query && batchCounter < nodeCreationBatchSize) {
         batchedInserts << query
         batchCounter++
-        query = personAndProductBatchedInsertQueue.poll()
+        query = personProductQueue.poll()
       }
 
       if (batchedInserts) {
@@ -233,19 +251,20 @@ threadCount.times {
       }
 
       if (!query && generationDone.get()) {
-        personAndProductLatch.countDown()
+        personProductLatch.countDown()
       }
     }
   }
 }
 
+// thread used to track progress
 Thread.start {
 
   def targetProgress = peopleToCreate + productsToCreate
 
-  new ProgressBar("(:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", targetProgress, 200).withCloseable { progressBar ->
+  new ProgressBar("(:${GraphKeys.instance.personNodeType}) and (:${GraphKeys.instance.productNodeType})", targetProgress, progressBarUpdateInterval).withCloseable { progressBar ->
 
-    while (personAndProductLatch.count > 0L) {
+    while (personProductLatch.count > 0L) {
       progressBar.stepTo(createCount.get())
     }
 
@@ -253,25 +272,30 @@ Thread.start {
   }
 }
 
-def peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges = new ConcurrentLinkedQueue()
+// create the latch and second queue for processing
+def peopleForOrderAndEdgesQueue = new ConcurrentLinkedQueue()
+def orderAndEdgesLatch = new CountDownLatch(threadCount)
+
+// generate the people and products, here is where the prior threads begin doing their work
 peopleToCreate.times { num ->
-  def address = faker.address()
+  def address = mainThreadFaker.address()
   def person = new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
-  personAndProductBatchedInsertQueue.offer(person)
-  peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.offer(person)
+  personProductQueue.offer(person)
+  peopleForOrderAndEdgesQueue.offer(person)
 }
 
 def products = new ArrayList(productsToCreate)
 productsToCreate.times { num ->
-  def product = new Product(id: num, name: faker.commerce().productName(), manufacturer: faker.company().name(), msrp: faker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
+  def product = new Product(id: num, name: mainThreadFaker.commerce().productName(), manufacturer: mainThreadFaker.company().name(), msrp: mainThreadFaker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
   products << product
-  personAndProductBatchedInsertQueue.offer(product)
+  personProductQueue.offer(product)
 }
 
+// signal to prior threads that generation is complete
 generationDone.set(true)
-personAndProductLatch.await()
 
-def edgeAndOrderGenerationLatch = new CountDownLatch(threadCount)
+// waiting for all threads to complete before continuing to order node and edge creation
+personProductLatch.await()
 
 threadCount.times {
 
@@ -279,9 +303,9 @@ threadCount.times {
 
     def threadRandom = new SplittableRandom()
 
-    while (!peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.empty) {
+    while (!peopleForOrderAndEdgesQueue.empty) {
 
-      def person = peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.poll()
+      def person = peopleForOrderAndEdgesQueue.poll()
 
       def views = threadRandom.nextInt(minPotentialViews, maxPotentialViews)
       def viewedProducts = [] as Set
@@ -372,13 +396,14 @@ threadCount.times {
       }
     }
 
-    edgeAndOrderGenerationLatch.countDown()
+    orderAndEdgesLatch.countDown()
   }
 }
 
-new ProgressBar("(:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.viewEdgeType}], [:${GraphKeys.instance.addToCartEdgeType}], [:${GraphKeys.instance.transactEdgeType}], and [:${GraphKeys.instance.containEdgeType}]", peopleToCreate, 200).withCloseable { progressBar ->
+// progress tracker for order node and edge creation, separate thread isn't needed as main thread reaches this as prior threads spin up
+new ProgressBar("(:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.viewEdgeType}], [:${GraphKeys.instance.addToCartEdgeType}], [:${GraphKeys.instance.transactEdgeType}], and [:${GraphKeys.instance.containEdgeType}]", peopleToCreate, progressBarUpdateInterval).withCloseable { progressBar ->
 
-  while (edgeAndOrderGenerationLatch.count > 0L) {
-    progressBar.stepTo(peopleToCreate - peopleQueueToCreateOrdersAndViewAddToCartAndTransactEdges.size())
+  while (orderAndEdgesLatch.count > 0L) {
+    progressBar.stepTo(peopleToCreate - peopleForOrderAndEdgesQueue.size())
   }
 }

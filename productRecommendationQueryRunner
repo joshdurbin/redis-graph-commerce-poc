@@ -11,27 +11,35 @@
   @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1')
 ])
 
+import groovy.transform.Canonical
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import groovy.transform.Canonical
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
-import org.apache.commons.math3.stat.descriptive.SummaryStatistics
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import com.redislabs.redisgraph.impl.api.RedisGraph
 import com.redislabs.redisgraph.Statistics.Label
 import me.tongfei.progressbar.ProgressBar
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
+import org.apache.commons.math3.stat.descriptive.SummaryStatistics
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
 
+def progressBarUpdateInterval = 200
+
+// defaults must be strings for CliBuilder
 def defaultGraphDB = 'prodrec'
 def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
+def defaultRedisHost = 'localhost'
+def defaultRedisPort = '6379'
 
 def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'productRecommendationQueryRunner -e <comma delimited environments> <other args>', width: -1)
 cli.db(longOpt: 'database', "The RedisGraph database to use for the query [defaults to ${defaultGraphDB}]", args: 1, defaultValue: defaultGraphDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
 cli.h(longOpt: 'help', 'Usage Information')
+cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${}]", args: 1, defaultValue: defaultRedisHost)
+cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${}]", args: 1, defaultValue: defaultRedisPort)
 
+// parse and validate options
 def cliOptions = cli.parse(args)
 
 if (!cliOptions) {
@@ -44,20 +52,25 @@ if (cliOptions.help) {
   System.exit(0)
 }
 
-def redisGraphDB = cliOptions.db
+def db = cliOptions.db
+
+// setup jedis and graph
 def threadCount = cliOptions.tc as Integer
 def config = new GenericObjectPoolConfig()
 config.setMaxTotal(threadCount)
-
-def jedisPool = new JedisPool(config)
+def jedisPool = new JedisPool(config, cliOptions.redisHost, cliOptions.redisPort as Integer)
 def redisGraph = new RedisGraph(jedisPool)
 
-def personIdsToOrderCounts = redisGraph.query(redisGraphDB, "match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit 1000")
+// query to get the top 1,000 person ids with the most orders
+def personIdsToOrderCounts = redisGraph.query(db, "match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit 1000")
 def personIds = personIdsToOrderCounts.collect {
   it.values.first() as Integer
 }
 
+// queue is used to track results coming back from the worker threads
 def queue = new LinkedBlockingQueue(threadCount * 5)
+
+// latch is used to denote to the progress bar when things should be complete
 def latch = new CountDownLatch(threadCount)
 
 @Canonical class RecommendedProducts {
@@ -73,31 +86,42 @@ def latch = new CountDownLatch(threadCount)
   def name
 }
 
+// this is used to generate a reaslistic max value for the progressbar
 def expectedNumberOfQueueEntries = personIds.size() * threadCount
 
+// thread generation
 threadCount.times { number ->
+
+  def shuffledPersonIds = personIds.shuffled()
 
   Thread.start {
 
-    personIds.shuffled().each { personId ->
+    // iterate over the people
+    shuffledPersonIds.each { personId ->
 
-      def recommendedProductsQuery = redisGraph.query(redisGraphDB, "match (p:person)-[:transact]->(:order)-[:contain]->(:product)<-[:contain]-(:order)-[:contain]->(prd:product) where p.id=${personId} return distinct prd.id, prd.name")
+      // ask the graph for the product ids and names found in the placed orders of other users who share product purchase histories with a given user, person id
+      def recommendedProductsQuery = redisGraph.query(db, "match (p:person)-[:transact]->(:order)-[:contain]->(:product)<-[:contain]-(:order)-[:contain]->(prd:product) where p.id=${personId} return distinct prd.id, prd.name")
       def recommendedProducts = recommendedProductsQuery.results.collect {
         new Product(it.values().first(), it.values().last())
       }
 
+      // get the query details and offer them to the queue for reporting
       def queryTime = recommendedProductsQuery.statistics.getStringValue(Label.QUERY_INTERNAL_EXECUTION_TIME).takeBefore(' ')
       queue.offer(new RecommendedProducts(personId, recommendedProducts, queryTime))
     }
 
+    // when things are all said and done, decrement the latch and exit
     latch.countDown()
   }
 }
 
+// counts don't require individual insert tracking, so we use the memory efficient summary stats
 def counts = new SummaryStatistics()
+
+// times does require it, so we can get the p50, p95, p99
 def times = new DescriptiveStatistics()
 
-new ProgressBar('Progress', expectedNumberOfQueueEntries, 200).withCloseable { progressBar ->
+new ProgressBar('Progress', expectedNumberOfQueueEntries, progressBarUpdateInterval).withCloseable { progressBar ->
 
   while (latch.count > 0L) {
 

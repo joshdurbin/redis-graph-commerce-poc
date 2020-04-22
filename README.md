@@ -13,7 +13,6 @@ Run the groovy script in this directory. It requires, ideally, Java 11, but 8 wi
 Running `./generateCommerceGraph -h` will generate the help menu for the generation script which, at the time of this writing is:
 
 ```
-➜  redis-graph-commerce-poc git:(master) ./generateCommerceGraph -h
 usage: generateCommerceGraph
 Commerce Graph Generator
  -db,--database <arg>                                         The RedisGraph database to use for our queries, data generation [defaults to prodrec]
@@ -36,6 +35,8 @@ Commerce Graph Generator
  -ncbs,--nodeCreationBatchSize <arg>                          The batch size to use for writes when creating people and products [defaults to 500]
  -peratc,--percentageOfViewsToAddToCart <arg>                 The percentage of views to turn into add-to-cart events for a given person and product [defaults to 25]
  -perpur,--percentageOfAddToCartToPurchase <arg>              The percentage of add-to-cart into purchase events for a given person and product [defaults to 90]
+ -rh,--redisHost <arg>                                        The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to null]
+ -rp,--redisPort <arg>                                        The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to null]
  -tc,--threadCount <arg>                                      The thread count to use [defaults to 6]
 ```
 
@@ -63,11 +64,11 @@ Write queries against the graph using Redis Insight:
 Two basic queries exist in the query runner in this repo called `productRecommendationQueryRunner`. Like the generator, it has configurable properties which can be output via `productRecommendationQueryRunner -h`:
 
 ```
-➜  redis-graph-commerce-poc git:(master) ./productRecommendationQueryRunner -h
-usage: productRecommendationQueryRunner -e <comma delimited environments> <other args>
 Concurrent RedisGraph Query Runner
  -db,--database <arg>      The RedisGraph database to use for the query [defaults to prodrec]
  -h,--help                 Usage Information
+ -rh,--redisHost <arg>     The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to null]
+ -rp,--redisPort <arg>     The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to null]
  -tc,--threadCount <arg>   The thread count to use [defaults to 6]
 ```
 
@@ -75,4 +76,3 @@ This query runner executes two queries;
 
   - One to get the top 1,000 order placing people ids -- `match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit 1000`
   - One to get the products found in the placed orders of other users based on the orders and products for a given user -- `match (p:person)-[:transact]->(:order)-[:contain]->(:product)<-[:contain]-(:order)-[:contain]->(prd:product) where p.id=${personId} return distinct prd.id, prd.name` (with no limits -- BAD)
-
