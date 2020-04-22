@@ -2,7 +2,7 @@
 
 @Grapes([
   @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
-  @Grab(group='com.github.javamainThreadFaker', module='javamainThreadFaker', version='1.0.1'),
+  @Grab(group='com.github.javafaker', module='javafaker', version='1.0.2'),
   @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
   @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
   @Grab(group='redis.clients', module='jedis', version='3.2.0'),
@@ -24,7 +24,7 @@ import java.time.LocalDateTime
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
-import com.github.javamainThreadFaker.mainThreadFaker
+import com.github.javafaker.Faker
 import com.google.common.base.Stopwatch
 import com.redislabs.redisgraph.impl.api.RedisGraph
 import me.tongfei.progressbar.ProgressBar
@@ -199,7 +199,7 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 }
 
 def random = new SplittableRandom()
-def mainThreadFaker = new mainThreadFaker()
+def mainThreadFaker = new Faker()
 
 def db = cliOptions.database
 
