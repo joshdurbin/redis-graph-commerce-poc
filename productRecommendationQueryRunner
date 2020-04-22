@@ -27,7 +27,7 @@ import redis.clients.jedis.JedisPool
 def defaultGraphDB = 'prodrec'
 def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
 
-def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'./prodRecQuery -e <comma delimited environments> <other args>', width: -1)
+def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'productRecommendationQueryRunner -e <comma delimited environments> <other args>', width: -1)
 cli.db(longOpt: 'database', "The RedisGraph database to use for the query [defaults to ${defaultGraphDB}]", args: 1, defaultValue: defaultGraphDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
 cli.h(longOpt: 'help', 'Usage Information')

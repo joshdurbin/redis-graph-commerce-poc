@@ -54,7 +54,7 @@ def defaultMinShipRate = '0.0'
 def defaultMaxPerProductPrice = '1000.00'
 def defaultMinPerProductPrice = '0.99'
 
-def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'./generateCommerceGraph', width: -1)
+def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'generateCommerceGraph', width: -1)
 cli.maxv(longOpt: 'maxPotentialViews', "The max number of potential views a person can have against a product [defaults to ${defaultMaxPotentialViews}]", args: 1, defaultValue: defaultMaxPotentialViews)
 cli.minv(longOpt: 'minPotentialViews', "The min number of potential views a person can have against a product [defaults to ${defaultMinPotentialViews}]", args: 1, defaultValue: defaultMinPotentialViews)
 cli.peratc(longOpt: 'percentageOfViewsToAddToCart', "The percentage of views to turn into add-to-cart events for a given person and product [defaults to ${defaultPercentageOfViewsToAddToCart}]", args: 1, defaultValue: defaultPercentageOfViewsToAddToCart)

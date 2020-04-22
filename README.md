@@ -7,9 +7,9 @@ To leverage; run a local instance of redis-graph or use the docker image:
 
 Then, run the groovy script in this directory.
 
-  `groovy 1-create_local_commerce_graph.groovy`
+  `./generateCommerceGraph`
 
-Finally, write queries against the graph using Redis Insight:
+If you're unsuare of settings run `./generateCommerceGraph -h`. Write queries against the graph using Redis Insight:
 
   `docker run -p 8001:8001 -it --rm redislabs/redisinsight`
 
