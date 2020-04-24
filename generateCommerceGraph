@@ -80,8 +80,8 @@ cli.maxppp(longOpt: 'maxPerProductPrice', "The max price per product [defaults t
 cli.minppp(longOpt: 'minPerProductPrice', "The min price per product [defaults to ${defaultMinPerProductPrice}]", args: 1, defaultValue: defaultMinPerProductPrice)
 cli.db(longOpt: 'database', "The RedisGraph database to use for our queries, data generation [defaults to ${defaultDB}]", args: 1, defaultValue: defaultDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
-cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${}]", args: 1, defaultValue: defaultRedisHost)
-cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${}]", args: 1, defaultValue: defaultRedisPort)
+cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisHost}]", args: 1, defaultValue: defaultRedisHost)
+cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisPort}]", args: 1, defaultValue: defaultRedisPort)
 cli.h(longOpt: 'help', 'Usage Information')
 
 // parse and validate options
