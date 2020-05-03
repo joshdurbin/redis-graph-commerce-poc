@@ -41,6 +41,7 @@ cli.h(longOpt: 'help', 'Usage Information')
 cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisHost}]", args: 1, defaultValue: defaultRedisHost)
 cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisPort}]", args: 1, defaultValue: defaultRedisPort)
 cli.tp(longOpt: 'topPurchasers', "The number of top purchasers to query for [defaults to ${defaultTopNumberOfPurchasers}]", args: 1, defaultValue: defaultTopNumberOfPurchasers)
+cli.l(longOpt: 'limitResults', "The default results limit.", args: 1)
 
 // parse and validate options
 def cliOptions = cli.parse(args)
@@ -93,7 +94,6 @@ def latch = new CountDownLatch(threadCount)
 
 // this is used to generate a reaslistic max value for the progressbar
 def expectedNumberOfQueueEntries = personIds.size()
-
 def queueOfPeopleToQueryForProductRecommendations = new ConcurrentLinkedQueue(personIds.shuffled())
 
 // thread generation
@@ -112,6 +112,10 @@ threadCount.times {
                        match (prod)<-[:contain]-(:order)-[:contain]->(rec_prod:product)
                        where not (p)-[:transact]->(:order)-[:contain]->(rec_prod)
                        return distinct rec_prod.id, rec_prod.name"""
+
+        if (cliOptions.limitResults) {
+          query += " limit ${cliOptions.limitResults}"  
+        }
 
         def recommendedProductsQuery = redisGraph.query(db, query)
         def recommendedProducts = recommendedProductsQuery.results.collect {
