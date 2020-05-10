@@ -150,8 +150,12 @@ validateParams('Product Price', minPerProductPrice, maxPerProductPrice)
 }
 
 def globalOrderIdCounter = new AtomicInteger(0)
-
 def mathContext = new MathContext(2, RoundingMode.HALF_UP)
+
+def viewsEdgeCount = new AtomicInteger(0)
+def addToCartEdgeCount = new AtomicInteger(0)
+def transactEdgeAndOrderNodeCount = new AtomicInteger(0)
+def containsEdgeCount = new AtomicInteger(0)
 
 @Canonical class Person {
 
@@ -320,6 +324,8 @@ threadCount.times {
         new Event(product: product, type: GraphKeys.instance.viewEdgeType, time: person.memberSince.plusMinutes(threadRandom.nextInt(1, minutesFromMemberSinceToNow as Integer) as Long))
       }
 
+      viewsEdgeCount.addAndGet(viewEvents.size())
+
       if (viewEvents) {
 
         // this pulls a percentage of viewed products into add to cart events
@@ -342,6 +348,7 @@ threadCount.times {
             "(p)-[:${event.type} {time: '${event.time}'}]->(prd${event.product.id})"
           }.join(', ')
           addedToCartEventEdges = ", ${joinedAddToCartEdges}"
+          addToCartEdgeCount.addAndGet(addedToCartEvents.size())
 
           if (purchasedEvents) {
 
@@ -354,7 +361,6 @@ threadCount.times {
               def shipAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(threadRandom.nextDouble(minShipRate, maxShipRate), mathContext))
 
               def order = new Order(id: globalOrderIdCounter.incrementAndGet(), subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: subTotalOfProducts + taxAddition + shipAddition)
-
               graph.query(db, "CREATE ${order.toCypherCreate()}")
 
               // we have to match across all the products
@@ -370,9 +376,10 @@ threadCount.times {
                 "(o)-[:contain]->(prd${product.id})"
               }.join(', ')
 
-              def query = "MATCH (p:${GraphKeys.instance.personNodeType}), (o:${GraphKeys.instance.orderNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND o.id=${order.id} AND ${productMatchCriteria} CREATE (p)-[:${GraphKeys.instance.transactEdgeType}]->(o), ${productEdges}"
+              transactEdgeAndOrderNodeCount.getAndIncrement()
+              containsEdgeCount.addAndGet(productsInOrder.size())
 
-              graph.query(db, query)
+              graph.query(db, "MATCH (p:${GraphKeys.instance.personNodeType}), (o:${GraphKeys.instance.orderNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND o.id=${order.id} AND ${productMatchCriteria} CREATE (p)-[:${GraphKeys.instance.transactEdgeType}]->(o), ${productEdges}")
             }
           }
         }
@@ -390,9 +397,7 @@ threadCount.times {
           "(p)-[:${event.type} {time: '${event.time}'}]->(prd${event.product.id})"
         }.join(', ')
 
-        def query = "MATCH (p:${GraphKeys.instance.personNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND ${productMatchCriteria} CREATE ${viewedEdges}${addedToCartEventEdges}"
-
-        graph.query(db, query)
+        graph.query(db, "MATCH (p:${GraphKeys.instance.personNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND ${productMatchCriteria} CREATE ${viewedEdges}${addedToCartEventEdges}")
       }
     }
 
@@ -407,3 +412,5 @@ new ProgressBar("(:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.
     progressBar.stepTo(peopleToCreate - peopleForOrderAndEdgesQueue.size())
   }
 }
+
+println "Finished creating ${peopleToCreate} '${GraphKeys.instance.personNodeType}', ${productsToCreate} '${GraphKeys.instance.productNodeType}', ${globalOrderIdCounter.get()} '${GraphKeys.instance.orderNodeType}', ${viewsEdgeCount.get()} '${GraphKeys.instance.viewEdgeType}' edges, ${addToCartEdgeCount.get()} '${GraphKeys.instance.addToCartEdgeType}' edges, ${transactEdgeAndOrderNodeCount.get()} '${GraphKeys.instance.transactEdgeType}' edges, and ${containsEdgeCount.get()} '${GraphKeys.instance.containEdgeType}' products edges."
