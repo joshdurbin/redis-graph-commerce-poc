@@ -34,7 +34,7 @@ def defaultRedisHost = 'localhost'
 def defaultRedisPort = '6379'
 def defaultTopNumberOfPurchasers = '1000'
 
-def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'productRecommendationQueryRunner -e <comma delimited environments> <other args>', width: -1)
+def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'productRecommendationQueryRunner <args>', width: -1)
 cli.db(longOpt: 'database', "The RedisGraph database to use for the query [defaults to ${defaultGraphDB}]", args: 1, defaultValue: defaultGraphDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
 cli.h(longOpt: 'help', 'Usage Information')
@@ -111,7 +111,7 @@ threadCount.times {
         def query = """match (p:person { id: ${personId} })-[:transact]->(:order)-[:contain]->(prod:product)
                        match (prod)<-[:contain]-(:order)-[:contain]->(rec_prod:product)
                        where not (p)-[:transact]->(:order)-[:contain]->(rec_prod)
-                       return distinct rec_prod.id, rec_prod.name"""
+                       return rec_prod.id, rec_prod.name order by indegree(prod) desc"""
 
         if (cliOptions.limitResults) {
           query += " limit ${cliOptions.limitResults}"  
@@ -127,7 +127,7 @@ threadCount.times {
         resultsQueue.offer(new RecommendedProducts(personId, recommendedProducts, queryTime))
 
       } catch (Exception e ) {
-        printErr("error processing ${personId}")
+        printErr("error processing ${personId}", e)
       }
     }
 
