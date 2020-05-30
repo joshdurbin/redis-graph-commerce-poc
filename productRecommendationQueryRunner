@@ -1,29 +1,28 @@
 #!/usr/bin/env groovy
 
 @Grapes([
-  @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
-  @Grab(group='org.apache.commons', module='commons-math3', version='3.6.1'),
-  @Grab(group='redis.clients', module='jedis', version='3.2.0'),
-  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.2'),
-  @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
-  @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
-  @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
-  @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1')
+        @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
+        @Grab(group='org.apache.commons', module='commons-math3', version='3.6.1'),
+        @Grab(group='redis.clients', module='jedis', version='3.2.0'),
+        @Grab(group='com.redislabs', module='jredisgraph', version='2.0.2'),
+        @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
+        @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
+        @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
+        @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1')
 ])
 
-import groovy.transform.Canonical
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
-import com.redislabs.redisgraph.impl.api.RedisGraph
 import com.redislabs.redisgraph.Statistics.Label
+import com.redislabs.redisgraph.impl.api.RedisGraph
+import groovy.transform.Canonical
 import me.tongfei.progressbar.ProgressBar
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
+
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
 
 def progressBarUpdateInterval = 200
 

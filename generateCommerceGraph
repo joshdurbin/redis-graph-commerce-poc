@@ -1,37 +1,36 @@
 #!/usr/bin/env groovy
 
 @Grapes([
-  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
-  @Grab(group='com.github.javafaker', module='javafaker', version='1.0.2'),
-  @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
-  @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
-  @Grab(group='redis.clients', module='jedis', version='3.2.0'),
-  @Grab(group='com.google.guava', module='guava', version='28.1-jre'),
-  @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
-  @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
-  @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
+        @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
+        @Grab(group='com.github.javafaker', module='javafaker', version='1.0.2'),
+        @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
+        @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
+        @Grab(group='redis.clients', module='jedis', version='3.2.0'),
+        @Grab(group='com.google.guava', module='guava', version='28.1-jre'),
+        @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
+        @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
+        @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
 ])
 
-import groovy.lang.Singleton
-import groovy.transform.Canonical
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.SplittableRandom
-import java.time.temporal.ChronoUnit
-import java.time.LocalDateTime
-import java.math.BigDecimal
-import java.math.MathContext
-import java.math.RoundingMode
 import com.github.javafaker.Faker
-import com.google.common.base.Stopwatch
 import com.redislabs.redisgraph.impl.api.RedisGraph
+import groovy.transform.Canonical
 import me.tongfei.progressbar.ProgressBar
-import org.apache.commons.lang3.RandomStringUtils
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
+
+import java.math.BigDecimal
+import java.math.MathContext
+import java.math.RoundingMode
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
+import java.time.ZoneOffset
+import java.util.SplittableRandom
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 def progressBarUpdateInterval = 200
 
@@ -58,6 +57,7 @@ def defaultMaxPerProductPrice = '1000.00'
 def defaultMinPerProductPrice = '0.99'
 def defaultRedisHost = 'localhost'
 def defaultRedisPort = '6379'
+
 
 def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'generateCommerceGraph', width: -1)
 cli.maxv(longOpt: 'maxPotentialViews', "The max number of potential views a person can have against a product [defaults to ${defaultMaxPotentialViews}]", args: 1, defaultValue: defaultMaxPotentialViews)
@@ -152,11 +152,6 @@ validateParams('Product Price', minPerProductPrice, maxPerProductPrice)
 def globalOrderIdCounter = new AtomicInteger(0)
 def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 
-def viewsEdgeCount = new AtomicInteger(0)
-def addToCartEdgeCount = new AtomicInteger(0)
-def transactEdgeAndOrderNodeCount = new AtomicInteger(0)
-def containsEdgeCount = new AtomicInteger(0)
-
 @Canonical class Person {
 
   def id
@@ -166,7 +161,15 @@ def containsEdgeCount = new AtomicInteger(0)
   def memberSince
 
   def toCypherCreate() {
-    "(:${GraphKeys.instance.personNodeType} {id: ${id}, name:\"${name}\",age:${age},address:\"${address}\",memberSince:\"${memberSince}\"})"
+    "(:${GraphKeys.instance.personNodeType} {id: ${id}, name:\"${name}\",age:${age},address:\"${address}\",memberSince:${memberSince.toEpochSecond(ZoneOffset.UTC)}})"
+  }
+
+  def toCypherId() {
+    "(p${id})"
+  }
+
+  def toCypherMatch() {
+    "(p${id}:${GraphKeys.instance.personNodeType} {id: ${id}})"
   }
 }
 
@@ -180,6 +183,14 @@ def containsEdgeCount = new AtomicInteger(0)
   def toCypherCreate() {
     "(:${GraphKeys.instance.productNodeType} {id: ${id},name:\"${name}\",manufacturer:\"${manufacturer}\",msrp:'${msrp}'})"
   }
+
+  def toCypherId() {
+    "(prd${id})"
+  }
+
+  def toCypherMatch() {
+    "(prd${id}:${GraphKeys.instance.personNodeType} {id: ${id}})"
+  }
 }
 
 @Canonical class Order {
@@ -192,6 +203,14 @@ def containsEdgeCount = new AtomicInteger(0)
 
   def toCypherCreate() {
     "(:${GraphKeys.instance.orderNodeType} {id: ${id},subTotal:${subTotal},tax:${tax},shipping:${shipping},total:${total}})"
+  }
+
+  def toCypherId() {
+    "(o${id})"
+  }
+
+  def toCypherMatch() {
+    "(o${id}:${GraphKeys.instance.personNodeType} {id: ${id}})"
   }
 }
 
@@ -324,8 +343,6 @@ threadCount.times {
         new Event(product: product, type: GraphKeys.instance.viewEdgeType, time: person.memberSince.plusMinutes(threadRandom.nextInt(1, minutesFromMemberSinceToNow as Integer) as Long))
       }
 
-      viewsEdgeCount.addAndGet(viewEvents.size())
-
       if (viewEvents) {
 
         // this pulls a percentage of viewed products into add to cart events
@@ -345,17 +362,15 @@ threadCount.times {
         if (addedToCartEvents) {
 
           def joinedAddToCartEdges = addedToCartEvents.collect { event ->
-            "(p)-[:${event.type} {time: '${event.time}'}]->(prd${event.product.id})"
+            "(p)-[:${event.type} {time: ${event.time.toEpochSecond(ZoneOffset.UTC)}}]->(prd${event.product.id})"
           }.join(', ')
           addedToCartEventEdges = ", ${joinedAddToCartEdges}"
-          addToCartEdgeCount.addAndGet(addedToCartEvents.size())
 
           if (purchasedEvents) {
 
             purchasedEvents.collate(threadRandom.nextInt(0, purchasedEvents.size())).collect { subSetOfPurchasedEvents ->
 
               def productsInOrder = subSetOfPurchasedEvents.collect { event -> event.product }
-              def oldestPurchasedEvent = subSetOfPurchasedEvents.max { event -> event.time }
               def subTotalOfProducts = productsInOrder.collect { product -> product.msrp }.sum()
               def taxAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(threadRandom.nextDouble(minTaxRate, maxTaxRate), mathContext))
               def shipAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(threadRandom.nextDouble(minShipRate, maxShipRate), mathContext))
@@ -376,9 +391,6 @@ threadCount.times {
                 "(o)-[:contain]->(prd${product.id})"
               }.join(', ')
 
-              transactEdgeAndOrderNodeCount.getAndIncrement()
-              containsEdgeCount.addAndGet(productsInOrder.size())
-
               graph.query(db, "MATCH (p:${GraphKeys.instance.personNodeType}), (o:${GraphKeys.instance.orderNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND o.id=${order.id} AND ${productMatchCriteria} CREATE (p)-[:${GraphKeys.instance.transactEdgeType}]->(o), ${productEdges}")
             }
           }
@@ -394,8 +406,11 @@ threadCount.times {
         }.join(' AND ')
 
         def viewedEdges = viewEvents.collect { event ->
-          "(p)-[:${event.type} {time: '${event.time}'}]->(prd${event.product.id})"
+          "(p)-[:${event.type} {time: ${event.time.toEpochSecond(ZoneOffset.UTC)}}]->(prd${event.product.id})"
         }.join(', ')
+
+
+
 
         graph.query(db, "MATCH (p:${GraphKeys.instance.personNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND ${productMatchCriteria} CREATE ${viewedEdges}${addedToCartEventEdges}")
       }
@@ -412,5 +427,3 @@ new ProgressBar("(:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.
     progressBar.stepTo(peopleToCreate - peopleForOrderAndEdgesQueue.size())
   }
 }
-
-println "Finished creating ${peopleToCreate} '${GraphKeys.instance.personNodeType}', ${productsToCreate} '${GraphKeys.instance.productNodeType}', ${globalOrderIdCounter.get()} '${GraphKeys.instance.orderNodeType}', ${viewsEdgeCount.get()} '${GraphKeys.instance.viewEdgeType}' edges, ${addToCartEdgeCount.get()} '${GraphKeys.instance.addToCartEdgeType}' edges, ${transactEdgeAndOrderNodeCount.get()} '${GraphKeys.instance.transactEdgeType}' edges, and ${containsEdgeCount.get()} '${GraphKeys.instance.containEdgeType}' products edges."
