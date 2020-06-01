@@ -189,7 +189,7 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
   }
 
   def toCypherMatch() {
-    "(prd${id}:${GraphKeys.instance.personNodeType} {id: ${id}})"
+    "(prd${id}:${GraphKeys.instance.productNodeType} {id: ${id}})"
   }
 }
 
@@ -200,9 +200,11 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
   def tax
   def shipping
   def total
+  def products
+  def transactionTime
 
   def toCypherCreate() {
-    "(:${GraphKeys.instance.orderNodeType} {id: ${id},subTotal:${subTotal},tax:${tax},shipping:${shipping},total:${total}})"
+    "(o${id}:${GraphKeys.instance.orderNodeType} {id: ${id},subTotal:${subTotal},tax:${tax},shipping:${shipping},total:${total}})"
   }
 
   def toCypherId() {
@@ -210,15 +212,25 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
   }
 
   def toCypherMatch() {
-    "(o${id}:${GraphKeys.instance.personNodeType} {id: ${id}})"
+    "(o${id}:${GraphKeys.instance.orderNodeType} {id: ${id}})"
   }
+
 }
 
 @Canonical class Event {
 
-  def product
+  def source
+  def destination
   def type
   def time
+
+  def toCypherCreate() {
+    if (time) {
+      "${source.toCypherId()}-[:${type} {time: ${time.toEpochSecond(ZoneOffset.UTC)}}]->${destination.toCypherId()}"
+    } else {
+      "${source.toCypherId()}-[:${type}]->${destination.toCypherId()}"
+    }
+  }
 }
 
 def random = new SplittableRandom()
@@ -296,15 +308,15 @@ Thread.start {
 }
 
 // create the latch and second queue for processing
-def peopleForOrderAndEdgesQueue = new ConcurrentLinkedQueue()
 def orderAndEdgesLatch = new CountDownLatch(threadCount)
 
 // generate the people and products, here is where the prior threads begin doing their work
+def people = new ArrayList(peopleToCreate)
 peopleToCreate.times { num ->
   def address = mainThreadFaker.address()
   def person = new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
   personProductQueue.offer(person)
-  peopleForOrderAndEdgesQueue.offer(person)
+  people << person
 }
 
 def products = new ArrayList(productsToCreate)
@@ -320,110 +332,87 @@ generationDone.set(true)
 // waiting for all threads to complete before continuing to order node and edge creation
 personProductLatch.await()
 
-threadCount.times {
+people.each { person ->
 
-  Thread.start { thread ->
+  def views = random.nextInt(minPotentialViews, maxPotentialViews)
+  def viewedProducts = [] as Set
+  def minutesFromMemberSinceToNow = person.memberSince.until(now, ChronoUnit.MINUTES)
 
-    def threadRandom = new SplittableRandom()
+  // generate random value up to max potential views and drop those into a unique set
+  views.times {
+    viewedProducts << products.get(random.nextInt(products.size()))
+  }
 
-    while (!peopleForOrderAndEdgesQueue.empty) {
+  def viewEvents = viewedProducts.collect { product ->
+    new Event(source: person, destination: product, type: GraphKeys.instance.viewEdgeType, time: person.memberSince.plusMinutes(random.nextInt(1, minutesFromMemberSinceToNow as Integer) as Long))
+  }
 
-      def person = peopleForOrderAndEdgesQueue.poll()
+  if (viewEvents) {
 
-      def views = threadRandom.nextInt(minPotentialViews, maxPotentialViews)
-      def viewedProducts = [] as Set
-      def minutesFromMemberSinceToNow = person.memberSince.until(now, ChronoUnit.MINUTES)
+    // iterate through view events and give each a random opportunity to become an add to cart event
+    def addedToCartEvents = viewEvents.findAll {
+      random.nextInt(100) <= percentageOfViewsToAddToCart
+    }.collect { event ->
 
-      // generate random value up to max potential views and drop those into a unique set
-      views.times {
-        viewedProducts << products.get(threadRandom.nextInt(products.size()))
-      }
+      // alter the event type and time and collect them
+      event.type = GraphKeys.instance.addToCartEdgeType
+      event.time = event.time.plusMinutes(random.nextInt(1, maxRandomTimeFromViewToAddToCartInMinutes) as Long)
 
-      def viewEvents = viewedProducts.collect { product ->
-        new Event(product: product, type: GraphKeys.instance.viewEdgeType, time: person.memberSince.plusMinutes(threadRandom.nextInt(1, minutesFromMemberSinceToNow as Integer) as Long))
-      }
+      event
+    }
 
-      if (viewEvents) {
+    // add to cart events that should go on to be purchases, though they are still add to cart events
+    def addToCartEventsToPurchase = addedToCartEvents.findAll {
+      random.nextInt(100) <= percentageOfAddToCartToPurchase
+    }
 
-        // this pulls a percentage of viewed products into add to cart events
-        def addedToCartEvents = viewEvents.findAll {
-          threadRandom.nextInt(100) <= percentageOfViewsToAddToCart
-        }.collect { event ->
-          new Event(product: event.product, type: GraphKeys.instance.addToCartEdgeType, time: event.time.plusMinutes(threadRandom.nextInt(1, maxRandomTimeFromViewToAddToCartInMinutes) as Long))
-        }
+    def orders = []
 
-        // purchasedEvents
-        def purchasedEvents = addedToCartEvents.findAll {
-          threadRandom.nextInt(100) <= percentageOfAddToCartToPurchase
-        }
+    if (addToCartEventsToPurchase) {
 
-        def addedToCartEventEdges = ''
+      addToCartEventsToPurchase.collate(random.nextInt(0, addToCartEventsToPurchase.size())).collect { subSetOfAddToCartEventsToPurchase ->
 
-        if (addedToCartEvents) {
+        def productsInOrder = subSetOfAddToCartEventsToPurchase.collect { event -> event.destination }
+        def subTotalOfProducts = productsInOrder.collect { product -> product.msrp }.sum()
+        def taxAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(random.nextDouble(minTaxRate, maxTaxRate), mathContext))
+        def shipAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(random.nextDouble(minShipRate, maxShipRate), mathContext))
+        def maxAddToCartTime = subSetOfAddToCartEventsToPurchase.collect { event -> event.time }.max()
 
-          def joinedAddToCartEdges = addedToCartEvents.collect { event ->
-            "(p)-[:${event.type} {time: ${event.time.toEpochSecond(ZoneOffset.UTC)}}]->(prd${event.product.id})"
-          }.join(', ')
-          addedToCartEventEdges = ", ${joinedAddToCartEdges}"
-
-          if (purchasedEvents) {
-
-            purchasedEvents.collate(threadRandom.nextInt(0, purchasedEvents.size())).collect { subSetOfPurchasedEvents ->
-
-              def productsInOrder = subSetOfPurchasedEvents.collect { event -> event.product }
-              def subTotalOfProducts = productsInOrder.collect { product -> product.msrp }.sum()
-              def taxAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(threadRandom.nextDouble(minTaxRate, maxTaxRate), mathContext))
-              def shipAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(threadRandom.nextDouble(minShipRate, maxShipRate), mathContext))
-
-              def order = new Order(id: globalOrderIdCounter.incrementAndGet(), subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: subTotalOfProducts + taxAddition + shipAddition)
-              graph.query(db, "CREATE ${order.toCypherCreate()}")
-
-              // we have to match across all the products
-              def productMatchDefinitionParams = productsInOrder.collect { product ->
-                "(prd${product.id}:${GraphKeys.instance.productNodeType})"
-              }.join(', ')
-
-              def productMatchCriteria = productsInOrder.collect { product ->
-                "prd${product.id}.id=${product.id}"
-              }.join(' AND ')
-
-              def productEdges = productsInOrder.collect { product ->
-                "(o)-[:contain]->(prd${product.id})"
-              }.join(', ')
-
-              graph.query(db, "MATCH (p:${GraphKeys.instance.personNodeType}), (o:${GraphKeys.instance.orderNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND o.id=${order.id} AND ${productMatchCriteria} CREATE (p)-[:${GraphKeys.instance.transactEdgeType}]->(o), ${productEdges}")
-            }
-          }
-        }
-
-        // we have to match across all the products
-        def productMatchDefinitionParams = viewEvents.collect { event ->
-          "(prd${event.product.id}:${GraphKeys.instance.productNodeType})"
-        }.join(', ')
-
-        def productMatchCriteria = viewEvents.collect { event ->
-          "prd${event.product.id}.id=${event.product.id}"
-        }.join(' AND ')
-
-        def viewedEdges = viewEvents.collect { event ->
-          "(p)-[:${event.type} {time: ${event.time.toEpochSecond(ZoneOffset.UTC)}}]->(prd${event.product.id})"
-        }.join(', ')
-
-
-
-
-        graph.query(db, "MATCH (p:${GraphKeys.instance.personNodeType}), ${productMatchDefinitionParams} WHERE p.id=${person.id} AND ${productMatchCriteria} CREATE ${viewedEdges}${addedToCartEventEdges}")
+        orders << new Order(id: globalOrderIdCounter.incrementAndGet(), transactionTime: maxAddToCartTime, products: productsInOrder, subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: subTotalOfProducts + taxAddition + shipAddition)
       }
     }
 
-    orderAndEdgesLatch.countDown()
-  }
-}
+    def matchStatement = "MATCH ${person.toCypherMatch()}"
 
-// progress tracker for order node and edge creation, separate thread isn't needed as main thread reaches this as prior threads spin up
-new ProgressBar("(:${GraphKeys.instance.orderNodeType}), [:${GraphKeys.instance.viewEdgeType}], [:${GraphKeys.instance.addToCartEdgeType}], [:${GraphKeys.instance.transactEdgeType}], and [:${GraphKeys.instance.containEdgeType}]", peopleToCreate, progressBarUpdateInterval).withCloseable { progressBar ->
+    // views are the basis for all other events, i.e. add to cart, purchase, etc...
+    def matchProducts = [] as Set
+    viewEvents.each { event ->
+      matchProducts << event.destination
+    }
+    matchProducts.each { product ->
+      matchStatement += ", ${product.toCypherMatch()}"
+    }
+    viewEvents.each { event ->
+      matchStatement += " MERGE ${event.toCypherCreate()}"
+    }
+    addedToCartEvents.each { event ->
+      matchStatement += " MERGE ${event.toCypherCreate()}"
+    }
+    orders.each { order ->
+      matchStatement += " MERGE ${order.toCypherCreate()}"
+    }
+    if (orders) {
+      orders.each { order ->
+        def transactEvent = new Event(source: person, destination: order, type: GraphKeys.instance.transactEdgeType, time: order.transactionTime)
+        matchStatement += " MERGE ${transactEvent.toCypherCreate()}"
+        order.products.each { product->
+          def orderContainEvent = new Event(source: order, destination: product, type: GraphKeys.instance.containEdgeType)
+          matchStatement += " MERGE ${orderContainEvent.toCypherCreate()}"
+        }
+      }
+    }
 
-  while (orderAndEdgesLatch.count > 0L) {
-    progressBar.stepTo(peopleToCreate - peopleForOrderAndEdgesQueue.size())
+    println matchStatement
+
   }
 }
