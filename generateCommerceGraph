@@ -382,12 +382,14 @@ people.each { person ->
       addToCartEventsToPurchase.collate(random.nextInt(0, addToCartEventsToPurchase.size())).collect { subSetOfAddToCartEventsToPurchase ->
 
         def productsInOrder = subSetOfAddToCartEventsToPurchase.collect { event -> event.destination }
-        def subTotalOfProducts = productsInOrder.collect { product -> product.msrp }.sum()
+        def subTotalOfProducts = BigDecimal.valueOf(productsInOrder.collect { product -> product.msrp }.sum()).setScale(2, BigDecimal.ROUND_HALF_UP)
         def taxAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(random.nextDouble(minTaxRate, maxTaxRate), mathContext))
         def shipAddition = new BigDecimal(subTotalOfProducts, mathContext).multiply(new BigDecimal(random.nextDouble(minShipRate, maxShipRate), mathContext))
         def maxAddToCartTime = subSetOfAddToCartEventsToPurchase.collect { event -> event.time }.max()
 
-        orders << new Order(id: globalOrderIdCounter.incrementAndGet(), transactionTime: maxAddToCartTime, products: productsInOrder, subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: subTotalOfProducts + taxAddition + shipAddition)
+        def total = subTotalOfProducts.add(taxAddition).add(shipAddition).setScale(2, BigDecimal.ROUND_HALF_UP)
+
+        orders << new Order(id: globalOrderIdCounter.incrementAndGet(), transactionTime: maxAddToCartTime, products: productsInOrder, subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: total)
       }
     }
 
