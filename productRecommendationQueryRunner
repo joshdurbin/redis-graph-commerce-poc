@@ -16,7 +16,6 @@ import com.redislabs.redisgraph.impl.api.RedisGraph
 import groovy.transform.Canonical
 import me.tongfei.progressbar.ProgressBar
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
-import org.apache.commons.math3.stat.descriptive.SummaryStatistics
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
@@ -110,11 +109,7 @@ threadCount.times {
         def query = """match (p:person { id: ${personId} })-[:transact]->(:order)-[:contain]->(prod:product)
                        match (prod)<-[:contain]-(:order)-[:contain]->(rec_prod:product)
                        where not (p)-[:transact]->(:order)-[:contain]->(rec_prod)
-                       return rec_prod.id, rec_prod.name order by indegree(prod) desc"""
-
-        if (cliOptions.limitResults) {
-          query += " limit ${cliOptions.limitResults}"  
-        }
+                       return rec_prod.id, rec_prod.name order by indegree(prod) desc limit 10"""
 
         def recommendedProductsQuery = redisGraph.query(db, query)
         def recommendedProducts = recommendedProductsQuery.results.collect {
@@ -134,9 +129,6 @@ threadCount.times {
   }
 }
 
-// counts don't require individual insert tracking, so we use the memory efficient summary stats
-def counts = new SummaryStatistics()
-
 // times does require it, so we can get the p50, p95, p99
 def times = new DescriptiveStatistics()
 
@@ -148,11 +140,10 @@ new ProgressBar('Progress', expectedNumberOfQueueEntries, progressBarUpdateInter
 
     if (recommendedProducts) {
 
-      counts.addValue(recommendedProducts.products.size() as Integer)
       times.addValue(recommendedProducts.queryTime as Double)
       progressBar.step()
     }
   }
 }
 
-println "Found a min number of recommended products of ${counts.min as Integer}, avg of ${counts.mean as Integer}, and a max of ${counts.max as Integer} for ${counts.n} with a query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')}ms"
+println "Query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')}ms"

@@ -39,17 +39,16 @@ def progressBarUpdateInterval = 200
 // defaults must be strings for CliBuilder
 def defaultDB = 'prodrec'
 def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
-def defaultMaxPotentialViews = '50'
+def defaultMaxPotentialViews = '25'
 def defaultMinPotentialViews = '0'
 def defaultPercentageOfViewsToAddToCart = '25'
 def defaultPercentageOfAddToCartToPurchase = '90'
+def defaultPercentageOfPurchasesToRate = '35'
 def defaultMaxRandomTimeFromViewToAddToCartInMinutes = '4320'
 def defaultMaxRandomTimeFromAddToCartToPurchased = '4320'
 def defaultMaxPastDate = "${365 * 20}"
-def defaultMaxPotentialPeopleToCreate = '5001'
-def defaultMinPotentialPeopleToCreate = '5000'
-def defaultMaxPotentialProductsToCreate = '1001'
-def defaultMinPotentialProductsToCreate = '1000'
+def defaultNumberOfPeopleToCreate = '5000'
+def defaultNumberOfProductsToCreate = '1000'
 def defaultNodeCreationBatchSize = '500'
 def defaultMaxTaxRate = '0.125'
 def defaultMinTaxRate = '0.0'
@@ -66,13 +65,12 @@ cli.maxv(longOpt: 'maxPotentialViews', "The max number of potential views a pers
 cli.minv(longOpt: 'minPotentialViews', "The min number of potential views a person can have against a product [defaults to ${defaultMinPotentialViews}]", args: 1, defaultValue: defaultMinPotentialViews)
 cli.peratc(longOpt: 'percentageOfViewsToAddToCart', "The percentage of views to turn into add-to-cart events for a given person and product [defaults to ${defaultPercentageOfViewsToAddToCart}]", args: 1, defaultValue: defaultPercentageOfViewsToAddToCart)
 cli.perpur(longOpt: 'percentageOfAddToCartToPurchase', "The percentage of add-to-cart into purchase events for a given person and product [defaults to ${defaultPercentageOfAddToCartToPurchase}]", args: 1, defaultValue: defaultPercentageOfAddToCartToPurchase)
+cli.perrate(longOpt: 'percentageOfPurchasesToRate', "The percentage of purchases to rate [defaults to ${defaultPercentageOfPurchasesToRate}]", args: 1, defaultValue: defaultPercentageOfPurchasesToRate)
 cli.maxatct(longOpt: 'maxRandomTimeFromViewToAddToCartInMinutes', "The max random time from view to add-to-cart for a given user and product [defaults to ${defaultMaxRandomTimeFromViewToAddToCartInMinutes}]", args: 1, defaultValue: defaultMaxRandomTimeFromViewToAddToCartInMinutes)
 cli.maxpurt(longOpt: 'maxRandomTimeFromAddToCartToPurchased', "The max random time from add-to-cart to purchased for a given user and product[defaults to ${defaultMaxRandomTimeFromAddToCartToPurchased}]", args: 1, defaultValue: defaultMaxRandomTimeFromAddToCartToPurchased)
 cli.maxpd(longOpt: 'maxPastDate', "The max date in the past for the memberSince field of a given user [defaults to ${defaultMaxPastDate}]", args: 1, defaultValue: defaultMaxPastDate)
-cli.maxpeeps(longOpt: 'maxPotentialPeopleToCreate', "The max number of people to create [defaults to ${defaultMaxPotentialPeopleToCreate}]", args: 1, defaultValue: defaultMaxPotentialPeopleToCreate)
-cli.minpeeps(longOpt: 'minPotentialPeopleToCreate', "The min number of people to create [defaults to ${defaultMinPotentialPeopleToCreate}]", args: 1, defaultValue: defaultMinPotentialPeopleToCreate)
-cli.maxprods(longOpt: 'maxPotentialProductsToCreate', "The max number of products to create [defaults to ${defaultMaxPotentialProductsToCreate}]", args: 1, defaultValue: defaultMaxPotentialProductsToCreate)
-cli.minprods(longOpt: 'minPotentialProductsToCreate', "The min number of products to create [defaults to ${defaultMinPotentialProductsToCreate}]", args: 1, defaultValue: defaultMinPotentialProductsToCreate)
+cli.numpeeps(longOpt: 'numberOfPeopleToCreate', "The number of people to create [defaults to ${defaultNumberOfPeopleToCreate}]", args: 1, defaultValue: defaultNumberOfPeopleToCreate)
+cli.numprods(longOpt: 'numberOfProductsToCreate', "The number of products to create [defaults to ${defaultNumberOfProductsToCreate}]", args: 1, defaultValue: defaultNumberOfProductsToCreate)
 cli.ncbs(longOpt: 'nodeCreationBatchSize', "The batch size to use for writes when creating people and products [defaults to ${defaultNodeCreationBatchSize}]", args: 1, defaultValue: defaultNodeCreationBatchSize)
 cli.maxtax(longOpt: 'maxTaxRate', "The max tax rate for an order [defaults to ${defaultMaxTaxRate}]", args: 1, defaultValue: defaultMaxTaxRate)
 cli.mintax(longOpt: 'minTaxRate', "The min tax rate for an order [defaults to ${defaultMinTaxRate}]", args: 1, defaultValue: defaultMinTaxRate)
@@ -116,16 +114,12 @@ validateParams('Potential Views', minPotentialViews, maxPotentialViews)
 
 def percentageOfViewsToAddToCart = cliOptions.percentageOfViewsToAddToCart as Integer
 def percentageOfAddToCartToPurchase = cliOptions.percentageOfAddToCartToPurchase as Integer
+def percentageOfPurchasesToRate = cliOptions.percentageOfAddToCartToPurchase as Integer
 def maxRandomTimeFromViewToAddToCartInMinutes = cliOptions.maxRandomTimeFromViewToAddToCartInMinutes as Integer
-def maxRandomTimeFromAddToCartToPurchased = cliOptions.maxRandomTimeFromAddToCartToPurchased as Integer
-def maxPastDate = cliOptions.maxPastDate as Integer
-def maxPotentialPeopleToCreate = cliOptions.maxPotentialPeopleToCreate as Integer
-def minPotentialPeopleToCreate = cliOptions.minPotentialPeopleToCreate as Integer
-validateParams('Created People', minPotentialPeopleToCreate, maxPotentialPeopleToCreate)
 
-def maxPotentialProductsToCreate = cliOptions.maxPotentialProductsToCreate as Integer
-def minPotentialProductsToCreate = cliOptions.minPotentialProductsToCreate as Integer
-validateParams('Created Products', minPotentialProductsToCreate, maxPotentialProductsToCreate)
+def maxPastDate = cliOptions.maxPastDate as Integer
+def numberOfPeopleToCreate = cliOptions.numberOfPeopleToCreate as Integer
+def numberOfProductsToCreate = cliOptions.numberOfProductsToCreate as Integer
 
 def nodeCreationBatchSize = cliOptions.nodeCreationBatchSize as Integer
 def maxTaxRate = cliOptions.maxTaxRate as Double
@@ -253,8 +247,7 @@ def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 @Sortable
 class Query {
 
-  Integer priority
-  Boolean createOnly
+  Boolean containsMatch
   String query
 }
 
@@ -277,9 +270,7 @@ graph.query(db, "create index on :${GraphKeys.instance.orderNodeType}(id)")
 
 def now = LocalDateTime.now()
 
-def peopleToCreate = random.nextInt(minPotentialPeopleToCreate, maxPotentialPeopleToCreate)
-def productsToCreate = random.nextInt(minPotentialProductsToCreate, maxPotentialProductsToCreate)
-def queue = new PriorityBlockingQueue(peopleToCreate * 2, Query.comparatorByPriority())
+def queue = new PriorityBlockingQueue(500, Query.comparatorByContainsMatch())
 def terminationLatch = new CountDownLatch(threadCount)
 def generationComplete = new AtomicBoolean(false)
 def createCount = new AtomicInteger(0)
@@ -289,18 +280,18 @@ threadCount.times {
     while (terminationLatch.count) {
       def query = queue.poll(1, TimeUnit.SECONDS)
 
-      if (query && query.createOnly) {
+      if (query && !query.containsMatch) {
 
         def batchCounter = 0
         def batchCreateQueries = []
 
-        while (query && query.createOnly && batchCounter < nodeCreationBatchSize) {
+        while (query && !query.containsMatch && batchCounter < nodeCreationBatchSize) {
           batchCreateQueries << query.query
           batchCounter++
           query = queue.poll(1, TimeUnit.SECONDS)
         }
 
-        if (!query.createOnly) {
+        if (query.containsMatch) {
           queue.offer(query, 1, TimeUnit.SECONDS)
         }
 
@@ -320,7 +311,7 @@ threadCount.times {
 
 // thread used to track progress
 Thread.start {
-  def targetProgress = peopleToCreate * 2 + productsToCreate
+  def targetProgress = numberOfPeopleToCreate * 2 + numberOfProductsToCreate
   new ProgressBar('Creating...', targetProgress, progressBarUpdateInterval).withCloseable { progressBar ->
     while (terminationLatch.count) {
       progressBar.stepTo(createCount.get())
@@ -330,19 +321,20 @@ Thread.start {
 }
 
 // generate the people and products, here is where the prior threads begin doing their work
-def people = new ArrayList(peopleToCreate)
+def people = new ArrayList(numberOfPeopleToCreate)
 
-peopleToCreate.times { num ->
+numberOfPeopleToCreate.times { num ->
   def address = mainThreadFaker.address()
   def person = new Person(id: num, name: "${address.firstName()} ${address.lastName()}", address: address.fullAddress(), age: random.nextInt(10, 100), memberSince: LocalDateTime.now().minusDays(random.nextInt(1, maxPastDate) as Long))
-  queue.offer(new Query(priority: 1, createOnly: true, query: person.toCypherCreate()))
+  queue.offer(new Query(containsMatch: false, query: person.toCypherCreate()), 10, TimeUnit.SECONDS)
   people << person
 }
 
-def products = new ArrayList(productsToCreate)
-productsToCreate.times { num ->
+def products = new ArrayList(numberOfProductsToCreate)
+
+numberOfProductsToCreate.times { num ->
   def product = new Product(id: num, name: mainThreadFaker.commerce().productName(), manufacturer: mainThreadFaker.company().name(), msrp: mainThreadFaker.commerce().price(minPerProductPrice, maxPerProductPrice) as Double)
-  queue.offer(new Query(priority: 1, createOnly: true, query: product.toCypherCreate()))
+  queue.offer(new Query(containsMatch: false, query: product.toCypherCreate()), 10, TimeUnit.SECONDS)
   products << product
 }
 
@@ -424,7 +416,7 @@ people.each { person ->
             orderEdges << new TemporalEdge(source: person, destination: order, type: GraphKeys.instance.transactEdgeType, time: order.transactionTime)
             order.products.each { product->
               orderEdges << new Edge(source: order, destination: product, type: GraphKeys.instance.containEdgeType)
-              if (random.nextBoolean()) {
+              if (random.nextInt(100) <= percentageOfPurchasesToRate) {
                 orderEdges << new Rating(source: person, destination: product, type: GraphKeys.instance.ratingEdgeType, time: order.transactionTime, rating: random.nextInt(10))
               }
             }
@@ -436,7 +428,7 @@ people.each { person ->
       }
     }
 
-    queue.offer(new Query(priority: 2, createOnly: false, query: matchStatement))
+    queue.offer(new Query(containsMatch: true, query: matchStatement))
   }
 }
 
