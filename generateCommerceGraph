@@ -34,10 +34,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicBoolean
 
-def progressBarUpdateInterval = 200
+def progressBarUpdateInterval = 50
 
 // defaults must be strings for CliBuilder
 def defaultDB = 'prodrec'
@@ -150,7 +149,7 @@ class GraphKeys {
   def ratingEdgeType = 'rating'
 }
 
-def globalOrderIdCounter = new AtomicInteger(0)
+def globalOrderIdCounter = 0
 def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 
 @Canonical class Person {
@@ -276,52 +275,46 @@ def now = LocalDateTime.now()
 def queue = new PriorityBlockingQueue(500, Query.comparatorByContainsMatch())
 def terminationLatch = new CountDownLatch(threadCount)
 def generationComplete = new AtomicBoolean(false)
-def createCount = new AtomicInteger(0)
 def results = new CopyOnWriteArrayList()
 def matchResults = new CopyOnWriteArrayList()
 
-threadCount.times {
-  Thread.start {
-    while (terminationLatch.count) {
-      def query = queue.poll(1, TimeUnit.SECONDS)
+Thread.start {
+  new ProgressBar('Creating...', numberOfPeopleToCreate * 2 + numberOfProductsToCreate, progressBarUpdateInterval).withCloseable { progressBar ->
+    threadCount.times {
+      Thread.start {
+        while (terminationLatch.count) {
+          def query = queue.poll(1, TimeUnit.SECONDS)
 
-      if (query && !query.containsMatch) {
+          if (query && !query.containsMatch) {
 
-        def batchCounter = 0
-        def batchCreateQueries = []
+            def batchCounter = 0
+            def batchCreateQueries = []
 
-        while (query && !query.containsMatch && batchCounter < nodeCreationBatchSize) {
-          batchCreateQueries << query.query
-          batchCounter++
-          query = queue.poll(1, TimeUnit.SECONDS)
+            while (query && !query.containsMatch && batchCounter < nodeCreationBatchSize) {
+              batchCreateQueries << query.query
+              batchCounter++
+              query = queue.poll(1, TimeUnit.SECONDS)
+            }
+
+            if (query.containsMatch) {
+              queue.offer(query, 1, TimeUnit.SECONDS)
+            }
+
+            if (batchCreateQueries) {
+              results << graph.query(db, "CREATE ${batchCreateQueries.join(',')}")
+              progressBar.stepBy(batchCreateQueries.size() as Long)
+            }
+          } else if (query) {
+            matchResults << graph.query(db, query.query)
+            progressBar.step()
+          } else if (generationComplete.get()) {
+            terminationLatch.countDown()
+          }
         }
-
-        if (query.containsMatch) {
-          queue.offer(query, 1, TimeUnit.SECONDS)
-        }
-
-        if (batchCreateQueries) {
-          results << graph.query(db, "CREATE ${batchCreateQueries.join(',')}")
-          createCount.addAndGet(batchCreateQueries.size())
-        }
-      } else if (query) {
-        matchResults << graph.query(db, query.query)
-        createCount.addAndGet(1)
-      } else if (generationComplete.get()) {
-        terminationLatch.countDown()
       }
     }
-  }
-}
 
-// thread used to track progress
-Thread.start {
-  def targetProgress = numberOfPeopleToCreate * 2 + numberOfProductsToCreate
-  new ProgressBar('Creating...', targetProgress, progressBarUpdateInterval).withCloseable { progressBar ->
-    while (terminationLatch.count) {
-      progressBar.stepTo(createCount.get())
-    }
-    progressBar.stepTo(targetProgress)
+    terminationLatch.await()
   }
 }
 
@@ -386,7 +379,7 @@ people.each { person ->
 
         def total = subTotalOfProducts.add(taxAddition).add(shipAddition).setScale(2, BigDecimal.ROUND_HALF_UP)
 
-        orders << new Order(id: globalOrderIdCounter.incrementAndGet(), transactionTime: maxAddToCartTime, products: productsInOrder, subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: total)
+        orders << new Order(id: globalOrderIdCounter++, transactionTime: maxAddToCartTime, products: productsInOrder, subTotal: subTotalOfProducts, tax: taxAddition, shipping: shipAddition, total: total)
       }
     }
 
