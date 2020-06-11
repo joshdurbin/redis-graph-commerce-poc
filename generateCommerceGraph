@@ -4,7 +4,6 @@
   @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
   @Grab(group='com.github.javafaker', module='javafaker', version='1.0.2'),
   @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
-  @Grab(group='org.apache.commons', module='commons-math3', version='3.6.1'),
   @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
   @Grab(group='redis.clients', module='jedis', version='3.2.0'),
   @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
@@ -13,12 +12,10 @@
 ])
 
 import com.github.javafaker.Faker
-import com.redislabs.redisgraph.Statistics.Label
 import com.redislabs.redisgraph.impl.api.RedisGraph
 import groovy.transform.Canonical
 import groovy.transform.Sortable
 import me.tongfei.progressbar.ProgressBar
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
@@ -272,14 +269,13 @@ graph.query(db, "create index on :${GraphKeys.instance.orderNodeType}(id)")
 
 def now = LocalDateTime.now()
 
-def queue = new PriorityBlockingQueue(500, Query.comparatorByContainsMatch())
+def maxQueueLengthExpected = numberOfPeopleToCreate * 2 + numberOfProductsToCreate
+def queue = new PriorityBlockingQueue(maxQueueLengthExpected, Query.comparatorByContainsMatch())
 def terminationLatch = new CountDownLatch(threadCount)
 def generationComplete = new AtomicBoolean(false)
-def results = new CopyOnWriteArrayList()
-def matchResults = new CopyOnWriteArrayList()
 
 Thread.start {
-  new ProgressBar('Creating...', numberOfPeopleToCreate * 2 + numberOfProductsToCreate, progressBarUpdateInterval).withCloseable { progressBar ->
+  new ProgressBar('Creating...', maxQueueLengthExpected, progressBarUpdateInterval).withCloseable { progressBar ->
     threadCount.times {
       Thread.start {
         while (terminationLatch.count) {
@@ -301,11 +297,11 @@ Thread.start {
             }
 
             if (batchCreateQueries) {
-              results << graph.query(db, "CREATE ${batchCreateQueries.join(',')}")
+              graph.query(db, "CREATE ${batchCreateQueries.join(',')}")
               progressBar.stepBy(batchCreateQueries.size() as Long)
             }
           } else if (query) {
-            matchResults << graph.query(db, query.query)
+            graph.query(db, query.query)
             progressBar.step()
           } else if (generationComplete.get()) {
             terminationLatch.countDown()
@@ -432,29 +428,3 @@ people.each { person ->
 
 generationComplete.set(true)
 terminationLatch.await()
-
-def resultsQueryPerformanceStats = new DescriptiveStatistics()
-def matchResultsQueryPerformanceStats = new DescriptiveStatistics()
-def nodesCreated = 0
-def propertiesSet = 0
-def relationshipsCreated = 0
-
-results.each { result ->
-
-  resultsQueryPerformanceStats.addValue(result.statistics.getStringValue(Label.QUERY_INTERNAL_EXECUTION_TIME).takeBefore(' ') as Double)
-  nodesCreated += result.statistics.nodesCreated()
-  propertiesSet += result.statistics.propertiesSet()
-  relationshipsCreated += result.statistics.relationshipsCreated()
-}
-
-matchResults.each { result ->
-
-  matchResultsQueryPerformanceStats.addValue(result.statistics.getStringValue(Label.QUERY_INTERNAL_EXECUTION_TIME).takeBefore(' ') as Double)
-  nodesCreated += result.statistics.nodesCreated()
-  propertiesSet += result.statistics.propertiesSet()
-  relationshipsCreated += result.statistics.relationshipsCreated()
-}
-
-println "Insert only query performance p50 ${(resultsQueryPerformanceStats.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(resultsQueryPerformanceStats.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(resultsQueryPerformanceStats.getPercentile(99.0) as String).takeBefore('.')}ms."
-println "Bounded query performance p50 ${(matchResultsQueryPerformanceStats.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(matchResultsQueryPerformanceStats.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(matchResultsQueryPerformanceStats.getPercentile(99.0) as String).takeBefore('.')}ms."
-println "Total nodes created ${nodesCreated}, properties set ${propertiesSet}, and relationships created ${relationshipsCreated}."
