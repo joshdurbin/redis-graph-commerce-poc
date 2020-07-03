@@ -1,25 +1,24 @@
 #!/usr/bin/env groovy
 
 @Grapes([
-  @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
   @Grab(group='org.apache.commons', module='commons-math3', version='3.6.1'),
-  @Grab(group='redis.clients', module='jedis', version='3.2.0'),
-  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.2'),
+  @Grab(group='org.neo4j.driver', module='neo4j-java-driver', version='4.0.2'),
   @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
+  @Grab(group='com.google.guava', module='guava', version='29.0-jre'),
   @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
   @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1')
 ])
 
-import com.redislabs.redisgraph.Statistics.Label
-import com.redislabs.redisgraph.impl.api.RedisGraph
 import groovy.transform.Canonical
 import me.tongfei.progressbar.ProgressBar
 import org.apache.commons.math3.stat.descriptive.SynchronizedDescriptiveStatistics
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
-import redis.clients.jedis.JedisPool
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import org.neo4j.driver.AuthTokens
+import org.neo4j.driver.GraphDatabase
+import com.google.common.base.Stopwatch
 
 def progressBarUpdateInterval = 50
 
@@ -58,15 +57,18 @@ def db = cliOptions.db
 
 // setup jedis and graph
 def threadCount = cliOptions.tc as Integer
-def config = new GenericObjectPoolConfig()
-config.setMaxTotal(threadCount)
-def jedisPool = new JedisPool(config, cliOptions.redisHost, cliOptions.redisPort as Integer)
-def redisGraph = new RedisGraph(jedisPool)
+def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'natoar23ae' ))
 
 // query to get the top 1,000 person ids with the most orders
-def personIdsToOrderCounts = redisGraph.query(db, "match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit ${cliOptions.topPurchasers}")
-def personIds = personIdsToOrderCounts.collect {
-  it.values.first() as Integer
+
+def personIds = []
+
+neo4jdb.session().withCloseable { session ->
+
+  def thing = session.run("match (p:person)-[:transact]->(o:order) return p.id, count(o) as orders order by orders desc limit ${cliOptions.topPurchasers}")
+  thing.each {
+    personIds << (it.get('p.id').asInt())
+  }
 }
 
 // queue is used to track results coming back from the worker threads
@@ -98,27 +100,25 @@ new ProgressBar('Progress', expectedNumberOfQueueEntries, progressBarUpdateInter
     Thread.start {
       while (!queueOfPeopleToQueryForProductRecommendations.isEmpty()) {
         def personId = queueOfPeopleToQueryForProductRecommendations.poll()
-        try {
-          // ask the graph for the product ids and names found in the placed orders of other users who share product purchase histories with a given user, person id
-          def query = """match (p:person { id: ${personId} })-[:transact]->(:order)-[:contain]->(prod:product)
-                       match (prod)<-[:contain]-(:order)-[:contain]->(rec_prod:product)
-                       where not (p)-[:transact]->(:order)-[:contain]->(rec_prod)
-                       return rec_prod.id, rec_prod.name order by indegree(prod) desc limit 10"""
-//                       match (rec_prod)<-[r:rating]-(:person)
-//                       return rec_prod.id, rec_prod.name order by AVG(r.rating) desc limit 10"""
+        neo4jdb.session().withCloseable { session ->
 
-          def recommendedProductsQuery = redisGraph.query(db, query)
-          def recommendedProducts = recommendedProductsQuery.results.collect {
-            new Product(it.values().first(), it.values().last())
+          try {
+            // ask the graph for the product ids and names found in the placed orders of other users who share product purchase histories with a given user, person id
+
+            def query = """match (p:person { id: ${personId} })-[:transact]->(:order)-[:contain]->(prod:product)
+                         match (prod)<-[:contain]-(:order)-[:contain]->(rec_prod:product)
+                         where not (p)-[:transact]->(:order)-[:contain]->(rec_prod)
+                         return rec_prod.id, rec_prod.name order by size((prod)<-[]-()) desc limit 10"""
+
+            def watch = Stopwatch.createStarted()
+            session.run(query)
+            watch.stop()
+            times.addValue(watch.elapsed(TimeUnit.MICROSECONDS ) as Double)
+            progressBar.step()
+
+          } catch (Exception e ) {
+            printErr("error processing ${personId}", e)
           }
-
-          // get the query details and offer them to the queue for reporting
-          def queryTime = recommendedProductsQuery.statistics.getStringValue(Label.QUERY_INTERNAL_EXECUTION_TIME).takeBefore(' ')
-          times.addValue(queryTime as Double)
-          progressBar.step()
-
-        } catch (Exception e ) {
-          printErr("error processing ${personId}", e)
         }
       }
 
@@ -128,4 +128,6 @@ new ProgressBar('Progress', expectedNumberOfQueueEntries, progressBarUpdateInter
   latch.await()
 }
 
-println "Query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}ms, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}ms, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')}ms"
+println "Query performance p50 ${(times.getPercentile(50.0) as String).takeBefore('.')}, p95 ${(times.getPercentile(95.0) as String).takeBefore('.')}, p99 ${(times.getPercentile(99.0) as String).takeBefore('.')} micro seconds "
+
+neo4jdb.close()

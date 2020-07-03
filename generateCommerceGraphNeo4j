@@ -1,24 +1,19 @@
 #!/usr/bin/env groovy
 
 @Grapes([
-  @Grab(group='com.redislabs', module='jredisgraph', version='2.0.0'),
   @Grab(group='com.github.javafaker', module='javafaker', version='1.0.2'),
   @Grab(group='org.apache.commons', module='commons-lang3', version='3.9'),
-  @Grab(group='org.apache.commons', module='commons-pool2', version='2.8.0'),
-  @Grab(group='redis.clients', module='jedis', version='3.2.0'),
+  @Grab(group='org.neo4j.driver', module='neo4j-java-driver', version='4.0.2'),
   @Grab(group='com.github.oshi', module='oshi-core', version='4.6.1'),
   @Grab(group='me.tongfei', module='progressbar', version='0.7.3'),
   @Grab(group='org.slf4j', module='slf4j-simple', version='1.7.30'),
 ])
 
 import com.github.javafaker.Faker
-import com.redislabs.redisgraph.impl.api.RedisGraph
 import groovy.transform.Canonical
 import groovy.transform.Sortable
 import me.tongfei.progressbar.ProgressBar
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
-import redis.clients.jedis.JedisPool
 
 import java.math.BigDecimal
 import java.math.MathContext
@@ -31,6 +26,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+
+import org.neo4j.driver.AuthTokens
+import org.neo4j.driver.GraphDatabase
 
 def progressBarUpdateInterval = 50
 
@@ -96,8 +94,6 @@ if (cliOptions.help) {
 }
 
 def printErr = System.err.&println
-
-
 
 // closure for validating min/max are discrete
 def validateParams = { variable, min, max ->
@@ -270,15 +266,6 @@ def db = cliOptions.database
 
 // setup jedis and graph
 def threadCount = cliOptions.threadCount as Integer
-def config = new GenericObjectPoolConfig()
-config.setMaxTotal(threadCount)
-def jedisPool = new JedisPool(config, cliOptions.redisHost, cliOptions.redisPort as Integer)
-def graph = new RedisGraph(jedisPool)
-
-// index creation
-graph.query(db, "create index on :${GraphKeys.instance.personNodeType}(id)")
-graph.query(db, "create index on :${GraphKeys.instance.productNodeType}(id)")
-graph.query(db, "create index on :${GraphKeys.instance.orderNodeType}(id)")
 
 def now = LocalDateTime.now()
 
@@ -286,6 +273,7 @@ def maxQueueLengthExpected = numberOfPeopleToCreate * 2 + numberOfProductsToCrea
 def queue = new PriorityBlockingQueue(maxQueueLengthExpected, Query.comparatorByContainsMatch())
 def terminationLatch = new CountDownLatch(threadCount)
 def generationComplete = new AtomicBoolean(false)
+def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'natoar23ae' ))
 
 Thread.start {
   new ProgressBar('Creating...', maxQueueLengthExpected, progressBarUpdateInterval).withCloseable { progressBar ->
@@ -312,8 +300,10 @@ Thread.start {
             if (batchCreateQueries) {
 
               try {
-                graph.query(db, "CREATE ${batchCreateQueries.collect { it.getAndCount() }.join(',')}")
-                progressBar.stepBy(batchCreateQueries.size() as Long)
+                neo4jdb.session().withCloseable { session ->
+                  session.run("CREATE ${batchCreateQueries.collect { it.getAndCount() }.join(',')}")
+                  progressBar.stepBy(batchCreateQueries.size() as Long)
+                }
               } catch (Exception e) {
                 progressBar.stepBy(progressBar.getCurrent() - batchCreateQueries.size() as Long)
                 batchCreateQueries.each { localQuery ->
@@ -327,14 +317,16 @@ Thread.start {
             }
           } else if (query) {
             try {
-              graph.query(db, query.getAndCount())
-              progressBar.step()
+              neo4jdb.session().withCloseable { session ->
+                session.run(query.getAndCount())
+                progressBar.step()
+              }
             } catch (Exception e) {
               progressBar.stepBy(progressBar.getCurrent() - 1)
               if (query.retry()) {
                 queue.offer(query)
               } else {
-                printErr("The following query failed execution ${Query.retryCount} times: ${query.statement}")
+                printErr("The following query failed execution ${Query.retryCount} times: CREATE ${query.statement}")
               }
             }
           } else if (generationComplete.get()) {
