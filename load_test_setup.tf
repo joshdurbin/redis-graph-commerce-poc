@@ -1,5 +1,5 @@
 provider "linode" {
-  token = "81919d279808c15b598ffff53b37784444f92d0a9e332b20d1d4735bcb25a9dc"
+  token = ""
 }
 
 resource "linode_stackscript" "redis_graph_loadtest" {
