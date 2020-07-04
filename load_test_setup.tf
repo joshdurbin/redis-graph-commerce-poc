@@ -1,5 +1,8 @@
+variable "linode_token" {
+}
+
 provider "linode" {
-  token = ""
+  token = var.linode_token
 }
 
 resource "linode_stackscript" "redis_graph_loadtest" {
@@ -50,6 +53,7 @@ sysctl -w net.core.somaxconn=1024
 cd ~
 git clone --recurse-submodules -j8 https://github.com/RedisGraph/RedisGraph.git
 cd ~/RedisGraph
+git checkout tags/v2.0.13 -b version_2013
 make
 cp src/redisgraph.so /opt/
 
@@ -59,6 +63,9 @@ echo 'loadmodule /opt/redisgraph.so' >> /etc/redis.conf
 # cleanup
 cd ~
 rm -Rf RedisGraph/
+
+# start redis-server
+redis-server /etc/redis.conf > /var/log/redis.log &
 
 # benchmark suite
 curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.deb.sh | sudo bash
@@ -70,7 +77,7 @@ EOF
 }
 
 resource "linode_stackscript" "neo4j_loadtest" {
-  label = "redis"
+  label = "neo4j"
   description = "Builds and installs neo4j and the java/groovy load testing scripts"
   script = <<EOF
 #!/bin/bash
@@ -87,10 +94,10 @@ sdk install groovy
 
 # pull the generation and query scripts
 cd ~
-wget https://raw.githubusercontent.com/joshdurbin/redis-graph-commerce-poc/master/generateCommerceGraph
-chmod u+x generateCommerceGraph
-wget https://raw.githubusercontent.com/joshdurbin/redis-graph-commerce-poc/master/productRecommendationQueryRunner
-chmod u+x productRecommendationQueryRunner
+wget https://raw.githubusercontent.com/joshdurbin/redis-graph-commerce-poc/master/generateCommerceGraphNeo4j
+chmod u+x generateCommerceGraphNeo4j
+wget https://raw.githubusercontent.com/joshdurbin/redis-graph-commerce-poc/master/productRecommendationQueryRunnerNeo4j
+chmod u+x productRecommendationQueryRunnerNeo4j
 
 # run the scripts async to pre-pull maven dependencies
 ./generateCommerceGraph 2>/dev/null &
@@ -100,6 +107,10 @@ chmod u+x productRecommendationQueryRunner
 cd ~
 wget https://neo4j.com/artifact.php\?name\=neo4j-community-4.0.6-unix.tar.gz
 tar -zxf artifact.php\?name=neo4j-community-4.0.6-unix.tar.gz
+./neo4j-community-4.0.6/bin/neo4j-admin set-initial-password heO2thoDac0ZtbJDAY
+
+# tuning parameters
+ulimit -n 40000
 ./neo4j-community-4.0.6/bin/neo4j start
 
 # benchmark suite
@@ -119,6 +130,16 @@ resource "linode_sshkey" "jdurbin_platypus" {
 resource "linode_instance" "redis" {
   image = "linode/debian10"
   label = "redis"
+  region = "us-west"
+  type = "g6-dedicated-32"
+  authorized_keys = [linode_sshkey.jdurbin_platypus.ssh_key]
+  root_pass = "T0YSMfOcpTCT8gfv3hPdGzHtW7myahsG"
+  stackscript_id = linode_stackscript.redis_graph_loadtest.id
+}
+
+resource "linode_instance" "neo4j" {
+  image = "linode/debian10"
+  label = "neo4j"
   region = "us-west"
   type = "g6-dedicated-32"
   authorized_keys = [linode_sshkey.jdurbin_platypus.ssh_key]

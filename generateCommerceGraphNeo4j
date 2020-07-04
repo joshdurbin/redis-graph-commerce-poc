@@ -273,7 +273,7 @@ def maxQueueLengthExpected = numberOfPeopleToCreate * 2 + numberOfProductsToCrea
 def queue = new PriorityBlockingQueue(maxQueueLengthExpected, Query.comparatorByContainsMatch())
 def terminationLatch = new CountDownLatch(threadCount)
 def generationComplete = new AtomicBoolean(false)
-def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'natoar23ae' ))
+def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'heO2thoDac0ZtbJDAY' ))
 
 Thread.start {
   new ProgressBar('Creating...', maxQueueLengthExpected, progressBarUpdateInterval).withCloseable { progressBar ->

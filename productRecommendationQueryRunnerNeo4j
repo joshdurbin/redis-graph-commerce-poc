@@ -57,7 +57,7 @@ def db = cliOptions.db
 
 // setup jedis and graph
 def threadCount = cliOptions.tc as Integer
-def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'natoar23ae' ))
+def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'heO2thoDac0ZtbJDAY' ))
 
 // query to get the top 1,000 person ids with the most orders
 
