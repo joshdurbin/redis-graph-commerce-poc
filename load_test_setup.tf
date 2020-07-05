@@ -147,6 +147,10 @@ resource "linode_instance" "neo4j" {
   stackscript_id = linode_stackscript.neo4j_loadtest.id
 }
 
-output "instance_ip" {
+output "redis_instance_ip" {
   value = "${linode_instance.redis.ip_address}"
+}
+
+output "neo4j_instance_ip" {
+  value = "${linode_instance.neo4j.ip_address}"
 }
