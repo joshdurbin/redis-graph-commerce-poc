@@ -302,8 +302,8 @@ Thread.start {
               try {
                 neo4jdb.session().withCloseable { session ->
                   session.run("CREATE ${batchCreateQueries.collect { it.getAndCount() }.join(',')}")
-                  progressBar.stepBy(batchCreateQueries.size() as Long)
                 }
+                progressBar.stepBy(batchCreateQueries.size() as Long)
               } catch (Exception e) {
                 progressBar.stepBy(progressBar.getCurrent() - batchCreateQueries.size() as Long)
                 batchCreateQueries.each { localQuery ->
@@ -319,14 +319,14 @@ Thread.start {
             try {
               neo4jdb.session().withCloseable { session ->
                 session.run(query.getAndCount())
-                progressBar.step()
               }
+              progressBar.step()
             } catch (Exception e) {
               progressBar.stepBy(progressBar.getCurrent() - 1)
               if (query.retry()) {
                 queue.offer(query)
               } else {
-                printErr("The following query failed execution ${Query.retryCount} times: CREATE ${query.statement}")
+                printErr("The following query failed execution ${Query.retryCount} times: ${query.statement}")
               }
             }
           } else if (generationComplete.get()) {
