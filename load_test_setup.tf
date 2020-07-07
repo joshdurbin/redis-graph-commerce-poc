@@ -100,8 +100,8 @@ wget https://raw.githubusercontent.com/joshdurbin/redis-graph-commerce-poc/maste
 chmod u+x productRecommendationQueryRunnerNeo4j
 
 # run the scripts async to pre-pull maven dependencies
-./generateCommerceGraph 2>/dev/null &
-./productRecommendationQueryRunner 2>/dev/null &
+./generateCommerceGraphNeo4j 2>/dev/null &
+./productRecommendationQueryRunnerNeo4j 2>/dev/null &
 
 # pull redids source and build
 cd ~
