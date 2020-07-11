@@ -23,18 +23,19 @@ import com.google.common.base.Stopwatch
 def progressBarUpdateInterval = 50
 
 // defaults must be strings for CliBuilder
-def defaultGraphDB = 'prodrec'
 def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
 def defaultRedisHost = 'localhost'
-def defaultRedisPort = '6379'
+def defaultNeo4jUri = 'neo4j://localhost'
+def defaultNeo4jUsername = 'neo4j'
+def defaultNeo4jPassword = 'heO2thoDac0ZtbJDAY'
 def defaultTopNumberOfPurchasers = '5000'
 
-def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'productRecommendationQueryRunner <args>', width: -1)
-cli.db(longOpt: 'database', "The RedisGraph database to use for the query [defaults to ${defaultGraphDB}]", args: 1, defaultValue: defaultGraphDB)
+def cli = new CliBuilder(header: 'Concurrent RedisGraph Query Runner', usage:'productRecommendationQueryRunnerNeo4j <args>', width: -1)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
 cli.h(longOpt: 'help', 'Usage Information')
-cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisHost}]", args: 1, defaultValue: defaultRedisHost)
-cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisPort}]", args: 1, defaultValue: defaultRedisPort)
+cli.nuri(longOpt: 'neo4jUri', "The connect string, URI, to use for connecting to neo4j. [defaults to ${defaultNeo4jUri}]", args: 1, defaultValue: defaultNeo4jUri)
+cli.nu(longOpt: 'neo4jUsername', "The neo4j username to use for authentication. [defaults to ${defaultNeo4jUsername}]", args: 1, defaultValue: defaultNeo4jUsername)
+cli.np(longOpt: 'neo4jPassword', "The neo4j password to use for authentication. [defaults to ${defaultNeo4jPassword}]", args: 1, defaultValue: defaultNeo4jPassword)
 cli.tp(longOpt: 'topPurchasers', "The number of top purchasers to query for [defaults to ${defaultTopNumberOfPurchasers}]", args: 1, defaultValue: defaultTopNumberOfPurchasers)
 cli.l(longOpt: 'limitResults', "The default results limit.", args: 1)
 
@@ -53,11 +54,8 @@ if (cliOptions.help) {
   System.exit(0)
 }
 
-def db = cliOptions.db
-
-// setup jedis and graph
 def threadCount = cliOptions.tc as Integer
-def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'heO2thoDac0ZtbJDAY' ))
+def neo4jdb = GraphDatabase.driver(cliOptions.neo4jUri, AuthTokens.basic(cliOptions.neo4jUsername, cliOptions.neo4jPassword))
 
 // query to get the top 1,000 person ids with the most orders
 

@@ -33,7 +33,6 @@ import org.neo4j.driver.GraphDatabase
 def progressBarUpdateInterval = 50
 
 // defaults must be strings for CliBuilder
-def defaultDB = 'prodrec'
 def defaultThreadCount = "${new SystemInfo().hardware.processor.physicalProcessorCount}"
 def defaultMaxPotentialViews = '25'
 def defaultMinPotentialViews = '0'
@@ -52,11 +51,12 @@ def defaultMaxShipRate = '0.15'
 def defaultMinShipRate = '0.0'
 def defaultMaxPerProductPrice = '1000.00'
 def defaultMinPerProductPrice = '0.99'
-def defaultRedisHost = 'localhost'
-def defaultRedisPort = '6379'
+def defaultNeo4jUri = 'neo4j://localhost'
+def defaultNeo4jUsername = 'neo4j'
+def defaultNeo4jPassword = 'heO2thoDac0ZtbJDAY'
 
 
-def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'generateCommerceGraph', width: -1)
+def cli = new CliBuilder(header: 'Commerce Graph Generator', usage:'generateCommerceGraphNeo4j', width: -1)
 cli.maxv(longOpt: 'maxPotentialViews', "The max number of potential views a person can have against a product [defaults to ${defaultMaxPotentialViews}]", args: 1, defaultValue: defaultMaxPotentialViews)
 cli.minv(longOpt: 'minPotentialViews', "The min number of potential views a person can have against a product [defaults to ${defaultMinPotentialViews}]", args: 1, defaultValue: defaultMinPotentialViews)
 cli.peratc(longOpt: 'percentageOfViewsToAddToCart', "The percentage of views to turn into add-to-cart events for a given person and product [defaults to ${defaultPercentageOfViewsToAddToCart}]", args: 1, defaultValue: defaultPercentageOfViewsToAddToCart)
@@ -74,10 +74,10 @@ cli.maxship(longOpt: 'maxShipRate', "The max ship rate for an order [defaults to
 cli.minship(longOpt: 'minShipRate', "The min ship rate for an order [defaults to ${defaultMinShipRate}]", args: 1, defaultValue: defaultMinShipRate)
 cli.maxppp(longOpt: 'maxPerProductPrice', "The max price per product [defaults to ${defaultMaxPerProductPrice}]", args: 1, defaultValue: defaultMaxPerProductPrice)
 cli.minppp(longOpt: 'minPerProductPrice', "The min price per product [defaults to ${defaultMinPerProductPrice}]", args: 1, defaultValue: defaultMinPerProductPrice)
-cli.db(longOpt: 'database', "The RedisGraph database to use for our queries, data generation [defaults to ${defaultDB}]", args: 1, defaultValue: defaultDB)
 cli.tc(longOpt: 'threadCount', "The thread count to use [defaults to ${defaultThreadCount}]", args: 1, defaultValue: defaultThreadCount)
-cli.rh(longOpt: 'redisHost', "The host of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisHost}]", args: 1, defaultValue: defaultRedisHost)
-cli.rp(longOpt: 'redisPort', "The port of the Redis instance with the RedisGraph module installed to use for graph creation. [defaults to ${defaultRedisPort}]", args: 1, defaultValue: defaultRedisPort)
+cli.nuri(longOpt: 'neo4jUri', "The connect string, URI, to use for connecting to neo4j. [defaults to ${defaultNeo4jUri}]", args: 1, defaultValue: defaultNeo4jUri)
+cli.nu(longOpt: 'neo4jUsername', "The neo4j username to use for authentication. [defaults to ${defaultNeo4jUsername}]", args: 1, defaultValue: defaultNeo4jUsername)
+cli.np(longOpt: 'neo4jPassword', "The neo4j password to use for authentication. [defaults to ${defaultNeo4jPassword}]", args: 1, defaultValue: defaultNeo4jPassword)
 cli.h(longOpt: 'help', 'Usage Information')
 
 // parse and validate options
@@ -262,8 +262,6 @@ class Query {
 def random = new SplittableRandom()
 def mainThreadFaker = new Faker()
 
-def db = cliOptions.database
-
 // setup jedis and graph
 def threadCount = cliOptions.threadCount as Integer
 
@@ -273,7 +271,7 @@ def maxQueueLengthExpected = numberOfPeopleToCreate * 2 + numberOfProductsToCrea
 def queue = new PriorityBlockingQueue(maxQueueLengthExpected, Query.comparatorByContainsMatch())
 def terminationLatch = new CountDownLatch(threadCount)
 def generationComplete = new AtomicBoolean(false)
-def neo4jdb = GraphDatabase.driver('neo4j://localhost', AuthTokens.basic( 'neo4j', 'heO2thoDac0ZtbJDAY' ))
+def neo4jdb = GraphDatabase.driver(cliOptions.neo4jUri, AuthTokens.basic(cliOptions.neo4jUsername, cliOptions.neo4jPassword))
 
 Thread.start {
   new ProgressBar('Creating...', maxQueueLengthExpected, progressBarUpdateInterval).withCloseable { progressBar ->
