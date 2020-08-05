@@ -1,0 +1,75 @@
+root@li1000-148:~# sysbench --test=cpu --cpu-max-prime=20000 run
+WARNING: the --test option is deprecated. You can pass a script name or path on the command line without any options.
+sysbench 1.0.20 (using bundled LuaJIT 2.1.0-beta2)
+
+Running the test with following options:
+Number of threads: 1
+Initializing random number generator from current time
+
+
+Prime numbers limit: 20000
+
+Initializing worker threads...
+
+Threads started!
+
+CPU speed:
+    events per second:   503.69
+
+General statistics:
+    total time:                          10.0004s
+    total number of events:              5038
+
+Latency (ms):
+         min:                                    1.94
+         avg:                                    1.98
+         max:                                    2.08
+         95th percentile:                        2.03
+         sum:                                 9998.72
+
+Threads fairness:
+    events (avg/stddev):           5038.0000/0.00
+    execution time (avg/stddev):   9.9987/0.00
+
+
+
+
+
+
+
+
+
+
+root@li1000-148:~# sysbench --test=cpu --num-threads=32 --cpu-max-prime=20000 run
+WARNING: the --test option is deprecated. You can pass a script name or path on the command line without any options.
+WARNING: --num-threads is deprecated, use --threads instead
+sysbench 1.0.20 (using bundled LuaJIT 2.1.0-beta2)
+
+Running the test with following options:
+Number of threads: 32
+Initializing random number generator from current time
+
+
+Prime numbers limit: 20000
+
+Initializing worker threads...
+
+Threads started!
+
+CPU speed:
+    events per second:  8448.64
+
+General statistics:
+    total time:                          10.0036s
+    total number of events:              84530
+
+Latency (ms):
+         min:                                    1.94
+         avg:                                    3.78
+         max:                                   19.83
+         95th percentile:                        3.82
+         sum:                               319922.31
+
+Threads fairness:
+    events (avg/stddev):           2641.5625/14.44
+    execution time (avg/stddev):   9.9976/0.01

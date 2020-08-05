@@ -5,23 +5,18 @@
 
 import groovy.transform.Canonical
 
-import java.util.concurrent.TimeUnit
-import java.util.SplittableRandom
 import java.time.temporal.ChronoUnit
 import java.time.LocalDateTime
-import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
 
 import com.github.javafaker.Faker
-import org.apache.commons.lang3.RandomStringUtils
 
 def maxPotentialViews = 50
 def minPotentialViews = 0
 def percentageOfViewsToAddToCart = 25
 def percentageOfAddToCartToPurchase = 15
 def maxRandomTimeFromViewToAddToCartInMinutes = 4320
-def maxRandomTimeFromAddToCartToPurchased = 4320
 def maxPastDate = 365 * 20
 def maxPotentialPeopleToCreate = 1_001
 def minPotentialPeopleToCreate = 1_000
@@ -31,8 +26,6 @@ def maxTaxRate =  0.125
 def minTaxRate = 0.0
 def maxShipRate = 0.15
 def minShipRate = 0.0
-def minPerProductPrice = 0.99
-def maxPerProductPrice = 1000.00
 
 def mathContext = new MathContext(2, RoundingMode.HALF_UP)
 

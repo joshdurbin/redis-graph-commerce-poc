@@ -1,0 +1,295 @@
+root@li1000-148:~# redis-benchmark
+====== PING_INLINE ======
+  100000 requests completed in 1.13 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.1 milliseconds
+0.01% <= 0.2 milliseconds
+65.04% <= 0.3 milliseconds
+98.07% <= 0.4 milliseconds
+99.81% <= 0.5 milliseconds
+99.97% <= 0.6 milliseconds
+99.99% <= 0.7 milliseconds
+100.00% <= 0.7 milliseconds
+88652.48 requests per second
+
+====== PING_BULK ======
+  100000 requests completed in 1.13 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.2 milliseconds
+67.80% <= 0.3 milliseconds
+97.98% <= 0.4 milliseconds
+99.95% <= 0.5 milliseconds
+100.00% <= 0.5 milliseconds
+88261.25 requests per second
+
+====== SET ======
+  100000 requests completed in 1.11 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.1 milliseconds
+0.01% <= 0.2 milliseconds
+64.54% <= 0.3 milliseconds
+97.80% <= 0.4 milliseconds
+99.77% <= 0.5 milliseconds
+99.92% <= 0.6 milliseconds
+99.96% <= 0.7 milliseconds
+99.99% <= 0.8 milliseconds
+100.00% <= 0.9 milliseconds
+100.00% <= 0.9 milliseconds
+89766.61 requests per second
+
+====== GET ======
+  100000 requests completed in 1.13 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.1 milliseconds
+0.00% <= 0.2 milliseconds
+60.72% <= 0.3 milliseconds
+98.02% <= 0.4 milliseconds
+99.91% <= 0.5 milliseconds
+100.00% <= 0.5 milliseconds
+88261.25 requests per second
+
+====== INCR ======
+  100000 requests completed in 1.14 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.2 milliseconds
+56.67% <= 0.3 milliseconds
+98.25% <= 0.4 milliseconds
+99.89% <= 0.5 milliseconds
+99.98% <= 0.7 milliseconds
+100.00% <= 0.7 milliseconds
+87950.75 requests per second
+
+====== LPUSH ======
+  100000 requests completed in 1.13 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.1 milliseconds
+0.00% <= 0.2 milliseconds
+58.34% <= 0.3 milliseconds
+98.00% <= 0.4 milliseconds
+99.88% <= 0.5 milliseconds
+100.00% <= 0.6 milliseconds
+100.00% <= 0.6 milliseconds
+88731.15 requests per second
+
+====== RPUSH ======
+  100000 requests completed in 1.14 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.2 milliseconds
+54.10% <= 0.3 milliseconds
+97.77% <= 0.4 milliseconds
+99.88% <= 0.5 milliseconds
+100.00% <= 0.5 milliseconds
+87796.30 requests per second
+
+====== LPOP ======
+  100000 requests completed in 1.13 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.1 milliseconds
+0.00% <= 0.2 milliseconds
+54.63% <= 0.3 milliseconds
+97.87% <= 0.4 milliseconds
+99.76% <= 0.5 milliseconds
+99.97% <= 0.6 milliseconds
+99.97% <= 0.7 milliseconds
+100.00% <= 0.8 milliseconds
+100.00% <= 0.8 milliseconds
+88105.73 requests per second
+
+====== RPOP ======
+  100000 requests completed in 1.13 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.2 milliseconds
+56.85% <= 0.3 milliseconds
+97.79% <= 0.4 milliseconds
+99.91% <= 0.5 milliseconds
+100.00% <= 0.5 milliseconds
+88261.25 requests per second
+
+====== SADD ======
+  100000 requests completed in 1.15 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.2 milliseconds
+51.70% <= 0.3 milliseconds
+97.68% <= 0.4 milliseconds
+99.87% <= 0.5 milliseconds
+100.00% <= 0.5 milliseconds
+86655.11 requests per second
+
+====== HSET ======
+  100000 requests completed in 1.02 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.00% <= 0.1 milliseconds
+9.83% <= 0.2 milliseconds
+85.62% <= 0.3 milliseconds
+98.79% <= 0.4 milliseconds
+99.58% <= 0.5 milliseconds
+99.80% <= 0.6 milliseconds
+99.90% <= 0.7 milliseconds
+99.97% <= 0.8 milliseconds
+99.97% <= 2 milliseconds
+100.00% <= 2 milliseconds
+98231.83 requests per second
+
+====== SPOP ======
+  100000 requests completed in 1.04 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+100.00% <= 0 milliseconds
+96246.39 requests per second
+
+====== LPUSH (needed to benchmark LRANGE) ======
+  100000 requests completed in 1.01 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+100.00% <= 0 milliseconds
+98814.23 requests per second
+
+====== LRANGE_100 (first 100 elements) ======
+  100000 requests completed in 2.04 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+99.99% <= 1 milliseconds
+100.00% <= 1 milliseconds
+48947.62 requests per second
+
+====== LRANGE_300 (first 300 elements) ======
+  100000 requests completed in 5.32 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.01% <= 1 milliseconds
+99.98% <= 2 milliseconds
+100.00% <= 3 milliseconds
+100.00% <= 3 milliseconds
+18779.34 requests per second
+
+====== LRANGE_500 (first 450 elements) ======
+  100000 requests completed in 7.16 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.01% <= 1 milliseconds
+99.72% <= 2 milliseconds
+99.97% <= 3 milliseconds
+100.00% <= 4 milliseconds
+100.00% <= 4 milliseconds
+13970.38 requests per second
+
+====== LRANGE_600 (first 600 elements) ======
+  100000 requests completed in 8.90 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+0.01% <= 1 milliseconds
+1.40% <= 2 milliseconds
+99.94% <= 3 milliseconds
+99.97% <= 4 milliseconds
+99.99% <= 5 milliseconds
+100.00% <= 5 milliseconds
+11229.65 requests per second
+
+====== MSET (10 keys) ======
+  100000 requests completed in 1.22 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+  host configuration "save":
+  host configuration "appendonly": no
+  multi-thread: no
+
+99.96% <= 1 milliseconds
+100.00% <= 1 milliseconds
+81967.21 requests per second

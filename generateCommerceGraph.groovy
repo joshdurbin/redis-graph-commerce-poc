@@ -20,13 +20,11 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import oshi.SystemInfo
 import redis.clients.jedis.JedisPool
 
-import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.time.ZoneOffset
-import java.util.SplittableRandom
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -96,8 +94,6 @@ if (cliOptions.help) {
 }
 
 def printErr = System.err.&println
-
-
 
 // closure for validating min/max are discrete
 def validateParams = { variable, min, max ->
